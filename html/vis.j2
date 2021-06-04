@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+<style>
+.game {
+    margin: 10px
+}
+
+.boolean-input-features {
+    font-family: monospace;
+}
+
+img {
+    width: 100px;
+    height: 100px;
+    display: block;
+}
+
+div.speaker-image {
+    display: inline-block;
+    padding: 5px;
+}
+
+div.listener-image {
+    display: inline-block;
+    padding: 5px;
+}
+
+.correct {
+    background-color: green;
+}
+.incorrect {
+    background-color: red;
+}
+
+p.listener-gt {
+    margin: auto;
+    text-align: center;
+}
+p.listener-pred {
+    margin: auto;
+    text-align: center;
+}
+</style>
+</head>
+
+<div class="games">
+{% for game in games %}
+    <div class="game card" id="game-{{ game.i }}">
+        <div class="card-body">
+            <h2 class="game-header card-title">Game {{ game.i }}</h2>
+            <h4 class="true-lang card-subtitle mb-2 text-muted">{{ game.true_text }}</h4>
+            <div class="speaker-images">
+                {% for info in game.speaker_info %}
+                    <div class="speaker-image {{ 'correct' if info.gt else 'incorrect' }}">
+                      {{ info.visualization }}
+                    </div>
+                {% endfor %}
+            </div>
+            <div class="listener-sections">
+              {% for lang_type, listener_info in game.listener_info.items() %}
+                <div class="listener-section" data-lang-type="{{ lang_type }}" data-accuracy="{{ game.accuracy[lang_type] }}">
+                  <h4 class="pred-lang mt-2 card-subtitle mb-2 text-muted">{{ lang_type }}: {{ game.pred_text[lang_type] }} ({{ game.accuracy[lang_type] * 100 | round }}%)</h4>
+                  <div class="listener-images">
+                      {% for info in listener_info %}
+                          <div class="listener-image {{ info.correct }}">
+                              {{ info.visualization }}
+                              <p class="listener-gt">True: {{ info.gt }}</p>
+                              <p class="listener-pred">Pred: {{ info.pred }}</p>
+                          </div>
+                      {% endfor %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+        </div>
+    </div>
+{% endfor %}
+</div>
+
+<body>
+</body>
+</html>

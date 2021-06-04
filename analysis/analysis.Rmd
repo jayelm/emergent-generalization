@@ -1,0 +1,948 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup}
+library(tidyverse)
+library(cowplot)
+library(plotly)
+library(sunburstR)
+library(tidyselect)
+library(d3r)
+theme_set(theme_cowplot())
+
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+
+reorder_within <- function(x, by, within, fun = mean, sep = "___", ...) {
+  new_x <- paste(x, within, sep = sep)
+  stats::reorder(new_x, by, FUN = fun)
+}
+
+scale_x_reordered <- function(..., sep = "___") {
+  reg <- paste0(sep, ".+$")
+  ggplot2::scale_x_discrete(labels = function(x) gsub(reg, "", x), ...)
+}
+```
+
+```{r}
+srs <- read_csv("../exp/31_setref_20_ex_14_tok_7_len_7/sampled_lang_stats.csv")
+srs %>% filter(concept == "or red white")
+srs %>% filter(concept == 16)
+# Lasya
+```
+
+
+# Overall stats
+```{r}
+BIRDS_REF <- c(
+  "../exp/28_ref_cub_10_ex_pt_1/metrics.csv",
+  "../exp/28_ref_cub_10_ex_pt_2/metrics.csv",
+  "../exp/28_ref_cub_10_ex_pt_3/metrics.csv",
+  "../exp/28_ref_cub_10_ex_pt_4/metrics.csv",
+  "../exp/28_ref_cub_10_ex_pt_5/metrics.csv"
+)
+BIRDS_SETREF <- c(
+  "../exp/28_setref_cub_10_ex_pt_1/metrics.csv",
+  "../exp/28_setref_cub_10_ex_pt_2/metrics.csv",
+  "../exp/28_setref_cub_10_ex_pt_3/metrics.csv",
+  "../exp/28_setref_cub_10_ex_pt_4/metrics.csv",
+  "../exp/28_setref_cub_10_ex_pt_5/metrics.csv"
+)
+BIRDS_CONCEPT <- c(
+  "../exp/28_concept_cub_10_ex_pt_1/metrics.csv",
+  "../exp/28_concept_cub_10_ex_pt_2/metrics.csv",
+  "../exp/28_concept_cub_10_ex_pt_3/metrics.csv",
+  "../exp/28_concept_cub_10_ex_pt_4/metrics.csv",
+  "../exp/28_concept_cub_10_ex_pt_5/metrics.csv"
+)
+
+ldata <- function(name) {
+  function(f) {
+    if (!file.exists(f)) {
+      NULL
+    } else {
+      data <- read_csv(f) %>%
+        mutate(name = name) %>%
+        mutate(n_ex = str_extract(dirname(f), "\\d+_ex")) %>%
+        mutate(n_ex = as.numeric(substr(n_ex, 1, nchar(n_ex) - 3))) %>%
+        mutate(i = as.numeric(substr(dirname(f), nchar(dirname(f)), nchar(dirname(f)))))
+      # Must be finished training
+      if (99 %in% data$epoch) {
+        data
+      } else {
+        NULL
+      }
+    }
+  }
+}
+
+load_all <- function(ref, setref, concept) {
+  refs <- sapply(ref, ldata("ref"), simplify = F) %>% bind_rows()
+  setrefs <- sapply(setref, ldata("setref"), simplify = F) %>% bind_rows()
+  concepts <- sapply(concept, ldata("concept"), simplify = F) %>% bind_rows()
+  
+  comb <- bind_rows(refs, setrefs, concepts) %>%
+    group_by(name, epoch) %>%
+    gather("metric", "value", starts_with("train"), starts_with("val"), starts_with("test")) %>%
+    mutate(split = ifelse(
+      grepl("train", metric, fixed = T), "train",
+      ifelse(grepl("val", metric, fixed = T),
+             "val",
+             "test"))) %>%
+    mutate(metric = metric %>% str_remove(fixed("train_")) %>% str_remove(fixed("val_")) %>% str_remove(fixed("test_"))) %>%
+    mutate(name = str_to_title(name)) %>%
+    mutate(name = factor(name, levels = c("Ref", "Setref", "Concept")))
+  comb
+}
+
+plot_lang <- function(comb, title, kind = "hamming", strip = T, max_epochs = NULL) {
+  tpcomb <- comb %>%
+    mutate(metric = (if (kind == "hamming") { str_replace(metric, "ts", "edit") } else { str_replace(metric, "langts", "edit") })) %>%
+    filter(metric %in% c("edit", 'hausdorff')) %>%
+    mutate(metric = str_to_title(metric)) %>%
+    filter(split %in% c("train", "test")) %>%
+    mutate(split = str_to_title(split)) %>%
+    mutate(split = factor(split, levels = c("Train", "Test")))
+  
+  if (!is.null(max_epochs)) {
+    tpcomb <- tpcomb %>% filter(epoch <= max_epochs)
+  }
+  
+  p <- ggplot(tpcomb, aes(x = epoch, y = value, group = interaction(name, i), color = name)) +
+    geom_line(alpha = 0.2) +
+    stat_summary(aes(group = name), fun.y = mean, geom = "line") +
+    xlab('Epoch') +
+    facet_grid(metric ~ split, scales = "free_y") +
+    ylab('') +
+    labs(color = NULL) +
+    ggtitle(title)
+    # theme(legend.position = "bottom") +
+    # scale_y_continuous(labels = dropLeadingZero)
+  if (!strip) {
+    p <- p + theme(strip.background.y = element_blank())
+  }
+  
+  p
+}
+
+dropLeadingZero <- function(l){
+  str_replace(l, '0(?=.)', '')
+}
+
+
+summarize_stats <- function(comb, by_i = F, max_epoch = 199) {
+  best_epochs <- comb %>%
+    filter(epoch == max_epoch) %>%
+    mutate(epoch = best_epoch)
+  
+  # Compute average acc across train and test splits
+  tt_accs <- best_epochs %>%
+    filter(metric == "acc" & split %in% c("train", "test")) %>%
+    spread(split, value) %>%
+    mutate(tt_acc = (train + test) / 2) %>%
+    select(-train, -test) %>%
+    rename(value = tt_acc) %>%
+    mutate(metric = "acc", split = "traintest")
+  
+  if ("langts" %in% best_epochs$metric) {
+    tt_langts <- best_epochs %>%
+      filter(metric == "langts" & split %in% c("train", "test")) %>%
+      spread(split, value) %>%
+      mutate(tt_acc = (train + test) / 2) %>%
+      select(-train, -test) %>%
+      rename(value = tt_acc) %>%
+      mutate(metric = "langts", split = "traintest")
+  }
+  
+  if ("ts" %in% best_epochs$metric) {
+    tt_ts <- best_epochs %>%
+      filter(metric == "ts" & split %in% c("train", "test")) %>%
+      spread(split, value) %>%
+      mutate(tt_acc = (train + test) / 2) %>%
+      select(-train, -test) %>%
+      rename(value = tt_acc) %>%
+      mutate(metric = "ts", split = "traintest")
+  } else{
+    tt_ts <- NULL
+  }
+  
+  
+  best_epochs <- best_epochs %>%
+    bind_rows(tt_accs, tt_langts, tt_ts) %>%
+    spread(metric, value) %>%
+    select(-starts_with("best"))
+  
+  if (by_i) {
+    summ <- best_epochs %>%
+      group_by(name, n_ex, split, i)
+  } else {
+    summ <- best_epochs %>%
+      group_by(name, n_ex, split)
+  }
+    
+  summ %>%
+    summarise_all(list(mean = mean, sd = sd))
+}
+```
+
+```{r}
+summarize_stats(birds, max_epoch = 99) %>% filter(split == "traintest") %>% select(name, ts_mean, ts_sd)
+```
+
+
+```{r}
+# Load birds
+birds <- load_all(BIRDS_REF, BIRDS_SETREF, BIRDS_CONCEPT)
+View(birds)
+p <- plot_lang(birds, "Birds", "hamming")
+p
+save_plot("./birds_lang.pdf", p, base_height = 3.5, base_asp = 1.6)
+```
+
+```{r}
+SW_REF <- c(
+  "../exp/0501_ref_20_ex_1/metrics.csv",
+  "../exp/0501_ref_20_ex_2/metrics.csv",
+  "../exp/0501_ref_20_ex_3/metrics.csv",
+  "../exp/0501_ref_20_ex_4/metrics.csv",
+  "../exp/0501_ref_20_ex_5/metrics.csv"
+)
+SW_SETREF <- c(
+  "../exp/0501_setref_20_ex_1/metrics.csv",
+  "../exp/0501_setref_20_ex_2/metrics.csv",
+  "../exp/0501_setref_20_ex_3/metrics.csv",
+  "../exp/0501_setref_20_ex_4/metrics.csv",
+  "../exp/0501_setref_20_ex_5/metrics.csv"
+)
+SW_CONCEPT <- c(
+  "../exp/0501_concept_20_ex_1/metrics.csv",
+  "../exp/0501_concept_20_ex_2/metrics.csv",
+  "../exp/0501_concept_20_ex_3/metrics.csv",
+  "../exp/0501_concept_20_ex_4/metrics.csv",
+  "../exp/0501_concept_20_ex_5/metrics.csv"
+)
+
+sw <- load_all(SW_REF, SW_SETREF, SW_CONCEPT)
+swstats <- summarize_stats(sw, by_i = F)
+swstats %>% select(name, n_ex, split, langts_mean, langts_sd)
+swstats %>% select(name, n_ex, split, any_of(
+  c("i", "acc_mean", "acc_sd", "langts_mean", "langts_sd", "ts_mean", "ts_sd",
+    "ref_acc_mean", "ref_acc_sd", "setref_acc_mean", "setref_acc_sd", "concept_acc_mean", "concept_acc_sd",
+    "ref_ts_mean", "ref_ts_sd", "setref_ts_mean", "setref_ts_sd", "concept_ts_mean", "concept_ts_sd",
+    "ref_langts_mean", "ref_langts_sd", "setref_langts_mean", "setref_langts_sd", "concept_langts_mean", "concept_langts_sd"
+    ))) %>% select(name, split, concept_langts_mean, concept_langts_sd)
+p <- plot_lang(sw, "ShapeWorld", "edit", strip = F, max_epochs = 100)
+pp <- p + scale_y_continuous(breaks = c(0.0, 0.05, 0.10, 0.15, 0.20, 0.25))
+save_plot("./shapeworld_lang.pdf", pp, base_height = 3.5, base_asp = 1.6)
+```
+
+
+```{r}
+SW_SETREF_N <- sapply(c(2, 4, 6, 8, 12, 16, 20), function(n_ex) {
+  a <- sapply(1:10, function(i) {
+    sprintf("../exp/31_setref_%d_ex_14_tok_7_len_%d/metrics.csv", n_ex, i)
+  })
+  # b <- sapply(1:10, function(i) {
+    # sprintf("../exp/28_setref_%d_ex_14_tok_7_len_%d/metrics.csv", n_ex, i)
+  # })
+  a
+  # c(a, b)
+}) %>% c
+SW_CONCEPT_N <- sapply(c(2, 4, 6, 8, 12, 16, 20), function(n_ex) {
+  a <- sapply(1:10, function(i) {
+    sprintf("../exp/31_concept_%d_ex_14_tok_7_len_%d/metrics.csv", n_ex, i)
+  })
+  # b <- sapply(1:10, function(i) {
+    # sprintf("../exp/28_concept_%d_ex_14_tok_7_len_%d/metrics.csv", n_ex, i)
+  # })
+  # c(a, b)
+  a
+}) %>% c
+
+sw_langn <- load_all(SW_REF, SW_SETREF_N, SW_CONCEPT_N) %>%
+  summarize_stats(by_i = T, max_epoch = 99) %>%
+  filter(split == "traintest") %>%
+  mutate(ts = langts_mean) %>%
+  mutate(name = factor(name, levels = c("Ref", "Setref", "Concept")))
+
+sw_langn %>% group_by(name,w_ln_ex) %>% summarise(n = n())
+
+
+ p <- ggplot(sw_langn %>% filter(name %in% c("Setref", "Concept")), aes(x = n_ex / 2, y = ts, group = interaction(name, i), color = name, fill = name)) +
+  geom_hline(mapping = aes(yintercept = ts, color = name), data = sw_langn %>% filter(name == "Ref"), alpha = 0.5, size = 0.7) +
+  geom_point(position = position_jitter(0.1), alpha = 0.5, size = 0.9) +
+  # stat_summary(mapping = aes(group = interaction(name, split)), fun.y = mean, geom = 'line') +
+  geom_smooth(mapping = aes(group = name), se = T, alpha = 0.1, size = 0.7) +
+  scale_x_continuous(breaks = c(1, 2, 4, 6, 8, 10)) +
+  xlab("# targets") +
+  ylab(expression(paste("Topographic ", rho))) +
+  ggtitle("ShapeWorld") +
+  labs(color = NULL, fill = NULL) +
+  scale_color_discrete(drop = F) +
+  scale_fill_discrete(drop = F) +
+  coord_cartesian(ylim = c(0.0, 0.25)) +
+  scale_y_continuous(breaks = c(0, 0.1, 0.2))
+  # theme(legend.position = c("bottom"))
+
+p
+
+save_plot("./sw_n_ex_2.pdf", p, base_height = 2.3, base_asp = 1.6)
+```
+
+```{r}
+# significance tests
+tmp <- sw_langn %>% filter(name == "Setref")
+ggplot(tmp, aes(x = n_ex, y = (train_langts_mean + test_langts_mean) / 2)) +
+  geom_point()
+cor.test(tmp$n_ex, tmp$ts, method = c("spearman"), exact = F)
+
+tmp <- sw_langn %>% filter(name == "Concept")
+ggplot(tmp, aes(x = n_ex, y = (train_langts_mean + test_langts_mean) / 2)) +
+  geom_point()
+cor.test(tmp$n_ex, tmp$ts, method = c("spearman"), exact = F)
+
+tmp <- cub_langn %>% filter(name == "Setref")
+ggplot(tmp, aes(x = n_ex, y = (train_ts_mean + test_ts_mean) / 2)) +
+  geom_point()
+cor.test(tmp$n_ex, tmp$ts, method = c("spearman"), exact = F)
+
+tmp <- cub_langn %>% filter(name == "Concept")
+ggplot(tmp, aes(x = n_ex, y = (train_ts_mean + test_ts_mean) / 2)) +
+  geom_point()
+cor.test(tmp$n_ex, tmp$ts, method = c("spearman"), exact = F)
+```
+
+
+```{r}
+BIRDS_SETREF_N <- sapply(c(2, 4, 6, 8, 10), function(n_ex) {
+  sapply(1:5, function(i) {
+    sprintf("../exp/28_setref_cub_%d_ex_pt_%d/metrics.csv", n_ex, i)
+  }) %>% c
+}) %>% c
+BIRDS_CONCEPT_N <- sapply(c(2, 4, 6, 8, 10), function(n_ex) {
+  sapply(1:5, function(i) {
+    sprintf("../exp/28_concept_cub_%d_ex_pt_%d/metrics.csv", n_ex, i)
+  }) %>% c
+  sapply(1:5, function(i) {
+    sprintf("../exp/28_concept_cub_%d_ex_pt_%d/metrics.csv", n_ex, i)
+  }) %>% c
+}) %>% c
+
+cub_langn <- load_all(BIRDS_REF, BIRDS_SETREF_N, BIRDS_CONCEPT_N) %>%
+  summarize_stats(by_i = T, max_epoch = 99) %>%
+  # gather("metric", "ts", train_ts_mean, test_ts_mean, train_ts_std, test_ts_std) %>%
+  filter(split == "traintest") %>%
+  mutate(ts = ts_mean) %>%
+  # rename(Seen = train_ts_mean, Unseen = test_ts_mean) %>%
+  # gather("split", "ts", Seen, Unseen) %>%
+  # mutate(split = factor(split, levels = c("Seen", "Unseen"))) %>%
+  mutate(name = factor(name, levels = c("Ref", "Setref", "Concept")))
+
+cub_langn %>% group_by(name, n_ex) %>% summarise(n = n())
+
+p <- ggplot(cub_langn %>% filter(name %in% c("Setref", "Concept")), aes(x = n_ex / 2, y = ts, group = interaction(name, i), color = name, fill = name)) +
+  geom_hline(mapping = aes(yintercept = ts, color = name), data = cub_langn %>% filter(name == "Ref"), alpha = 0.5, size = 0.7) +
+  geom_point(position = position_jitter(0.1), alpha = 0.5, size = 0.9) +
+  # stat_summary(mapping = aes(group = interaction(name, split)), fun.y = mean, geom = 'line') +
+  geom_smooth(mapping = aes(group = name), se = T, alpha = 0.1, size = 0.7) +
+  scale_x_continuous(breaks = c(1, 2, 3, 4, 5)) +
+  xlab("# targets") +
+  ylab(expression(paste("Topographic ", rho))) +
+  ggtitle("Birds") +
+  labs(color = NULL, fill = NULL) +
+  scale_color_discrete(drop = F) +
+  scale_fill_discrete(drop = F) +
+  coord_cartesian(ylim = c(0, 0.6))
+  # scale_color_manual(values = threecol[c(2, 1, 3)])
+  # geom_errorbar(aes(ymin = ts - ts_std, ymax = ts + ts_std))
+
+p
+
+save_plot("./birds_n_ex_2.pdf", p, base_height = 2.3, base_asp = 1.6)
+```
+
+```{r}
+plot_sunburst <- function(lang, c, N = 300, lt = NULL) {
+  if (!is.null(lt)) {
+    lang <- lang %>% filter(lang_type == lt)
+  } else {
+    if ("lang_type" %in% colnames(lang)) {
+      if (length(unique(lang$lang_type)) > 1) {
+        stop("Too many lang types")
+      }
+    }
+  }
+  lang <- lang %>% filter(concept == c) %>%
+    mutate(lang = gsub("(\\w)", "\\1-", lang)) %>%
+    mutate(lang = paste0(lang, "$")) %>%
+    select(path = lang, counts = count)
+  
+  sprintf("Found %d counts, boostrapping up to %d", sum(lang$counts), N)
+  bs_lang_samp <- table(sample(lang$path, N, T, prob=lang$counts))
+  lang_nest <- data.frame(path = names(bs_lang_samp), counts = as.numeric(bs_lang_samp))
+  
+  char20 = c("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t")
+  colors <- list(
+    domain = c(char20[1:20], "$", "root"),
+    range = c(RColorBrewer::brewer.pal(12, "Set3"), RColorBrewer::brewer.pal(8, "Dark2"), "#FFFFFF", "#FFFFFF")
+  )
+  
+  sund2b(lang_nest, showLabels = F, colors = colors)
+}
+
+read_lang <- function(fname) {
+  lang_f <- read_csv(fname) %>%
+    mutate(lang = replace_na(lang, ""))
+  
+  if (all(startsWith(lang_f$lang, "b"))) {
+    lang_f <- lang_f %>% mutate(lang = substr(lang, 2, nchar(lang) - 1))
+  }
+  lang_f
+}
+```
+
+
+# LANG STATS
+```{r}
+SW_SETREF_LANG <- "../exp/31_setref_20_ex_14_tok_7_len_7/sampled_lang_stats.csv"
+SW_CONCEPT_LANG <- "../exp/31_concept_20_ex_14_tok_7_len_7/sampled_lang_stats.csv"
+SW_REF_LANG <- "../exp/28_ref_20_ex_14_tok_7_len_1/sampled_lang_stats.csv"
+
+CUB_SETREF_LANG <- "../exp/31_setref_cub_10_ex_pt_1/lang_stats.csv"
+CUB_CONCEPT_LANG <- "../exp/31_concept_cub_10_ex_pt_1/lang_stats.csv"
+CUB_REF_LANG <- "../exp/31_ref_cub_10_ex_pt_1/lang_stats.csv"
+
+TEMP1 <- '../exp/0501_concept_20_ex_2/zero_shot_lang_type_stats.csv'
+
+TEMP2 <- '../exp/0501_concept_20_ex_2/sampled_lang_stats.csv'
+
+lang <- read_lang(TEMP1)
+orig_lang <- read_lang(TEMP2)
+
+table(lang %>% filter(seen == "seen") %>% .$concept)
+table(lang %>% filter(seen == "unseen") %>% .$concept)
+
+lang %>% filter(concept == "red and triangle") %>% filter(lang_type == "acre") %>% arrange(-count)
+lang %>% filter(concept == "red and triangle") %>% filter(lang_type == "ground_truth_1") %>% arrange(-count)
+
+nchar(orig_lang$lang)
+lang
+lang %>% mutate(
+  lang = substr(lang, 3, nchar(lang) - 2)
+)
+
+plot_sunburst(lang, "green and circle", lt = "ground_truth_1")
+plot_sunburst(lang, "green and circle", lt = "acre")
+
+plot_sunburst(orig_lang, "and blue triangle")
+
+plot_sunburst(lang, "blue and triangle", lt = "ground_truth_1")
+
+plot_sunburst(lang, "green", lt = "ground_truth_1")
+
+plot_sunburst(lang, "green and triangle", lt = "closest_concept")
+plot_sunburst(lang, "yellow", lt = "ground_truth_1")
+plot_sunburst(
+  lang %>% mutate(lang = substr(lang, 1, 5)),
+  "green and triangle",
+  lt = "acre"
+)
+plot_sunburst(lang %>% mutate(lang = substr(lang, 1, 5)), "yellow and triangle", lt = "any_concept")
+
+orig_lang
+
+plot_sunburst(orig_lang, "and red triangle")
+plot_sunburst(orig_lang, "and blue square")
+
+orig_lang$lang
+```
+
+```{r}
+# Color legend
+RColorBrewer::display.brewer.pal(n = 12, "Set3")
+Legend
+
+collegend <- colors %>% as.data.frame %>%
+  mutate(domain = sapply(as.vector(domain), function(d) (intToUtf8(utf8ToInt(d))))) %>%
+  mutate(domain = factor(domain, levels = domain)) %>% 
+  head(20)
+
+p <- ggplot(collegend, aes(x = domain, fill = domain)) +
+  geom_bar(y = 1) +
+  scale_fill_manual(values = colors$range) +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(nrow=2))
+p
+save_plot("./color_legend.pdf", p, base_width = 10)
+
+# Pl
+```
+
+# Entropy/MI graphs
+
+```{r}
+comblang <- bind_rows(
+  read_csv(SW_SETREF_LANG) %>% mutate(name = "Setref", lang = replace_na(lang, "")),
+  read_csv(SW_CONCEPT_LANG) %>% mutate(name = "Concept", lang = replace_na(lang, "")),
+  read_csv(SW_REF_LANG) %>% mutate(name = "Ref", lang = replace_na(lang, "")),
+)
+comblang <- comblang %>%
+  select(arity, concept, name, entropy, seen, type) %>%
+  mutate(Arity = factor(arity)) %>%
+  mutate(Type = factor(type, levels = c("AND", "OR", "NOT", "prim"))) %>%
+  distinct() %>%
+  mutate(name = factor(name, levels = c("Ref", "Setref", "Concept"))) %>%
+  mutate(seen = str_to_title(seen))
+
+comblang %>% filter(concept == "and red triangle")
+
+# Maybe no need for seen?
+entropy_seen_p <- ggplot(comblang) +
+  geom_violin(mapping = aes(x = seen, y = entropy, fill = name)) +
+  geom_boxplot(mapping = aes(x = seen, y = entropy), fill = "white", width = 0.23) +
+  geom_point(mapping = aes(x = seen, y = entropy, shape = Type, alpha = Type), position = position_jitter(0.2)) +
+  scale_alpha_manual(values = c(0.25, 0.25, 0.25, 1)) +
+  facet_wrap(~ name) +
+  xlab('') +
+  ylab(expression(italic(H))) +
+  guides(fill = F) +
+  labs(shape = NULL, alpha = NULL)
+
+entropy_seen_p
+# save_plot("./entropy_by_concept_seen.pdf", entropy_seen_p, base_height = 3, base_asp = 1.7)
+
+entropy_p <- ggplot(comblang) +
+  geom_violin(mapping = aes(x = name, y = entropy, fill = name)) +
+  geom_boxplot(mapping = aes(x = name, y = entropy), fill = "white", width = 0.1) +
+  geom_point(mapping = aes(x = name, y = entropy, shape = Type, alpha = Type), position = position_jitter(0.2)) +
+  scale_alpha_manual(values = c(0.25, 0.25, 0.25, 1)) +
+  xlab('') +
+  ylab(expression(italic(H))) +
+  guides(fill = F) +
+  labs(shape = NULL, alpha = NULL) +
+  theme(legend.position = "bottom")
+
+entropy_p
+
+save_plot("./entropy_by_concept.pdf", entropy_p, base_height = 3, base_asp = 1.0)
+```
+
+
+# CUB ACRE entropies
+
+```{r}
+load_acre <- function(fpath, name, type = "cub") {
+  j <- jsonlite::read_json(fpath) %>%
+    as_tibble %>%
+    gather("metric", "value") %>%
+    filter(endsWith(metric, "_loss")) %>%
+    rename(loss = value, concept = metric) %>%
+    mutate(name = name)
+  
+  if (type == "cub") {
+    j <- j %>%
+      mutate(concept = substr(concept, 1, nchar(concept) - 5) %>% as.numeric) %>%
+      mutate(split = ifelse(concept >= 0 & concept < 150, "seen", "unseen"))
+  } else {
+    j <- j %>%
+      mutate(concept = substr(concept, 1, nchar(concept) - 5)) %>%
+      mutate(arity = ifelse(concept %in% c("and", "or"), 2, ifelse(concept == "not", 1, 0)))
+  }
+  j
+}
+
+# concept_acre <- load_acre("../exp/31_concept_cub_10_ex_pt_1/acre_metrics.json", "concept")
+# setref_acre <- load_acre("../exp/31_setref_cub_10_ex_pt_1/acre_metrics.json", "setref")
+# ref_acre <- load_acre("../exp/31_ref_cub_10_ex_pt_1/acre_metrics.json", "ref")
+
+baseline_acre <- load_acre("../exp/31_setref_20_ex_14_tok_7_len_7/90_lang_acre_metrics.json", "random", type = "shapeworld")
+setref_acre <- load_acre("../exp/31_setref_20_ex_14_tok_7_len_7/best_lang_acre_metrics.json", "setref", type = "shapeworld")
+concept_acre <- load_acre("../exp/31_concept_20_ex_14_tok_7_len_7/best_lang_acre_metrics.json", "concept", type = "shapeworld")
+cacre <- bind_rows(baseline_acre, setref_acre, concept_acre)
+
+ggplot(cacre, aes(x = name, y = loss, shape = factor(arity), color = name)) +
+  geom_point(position = position_jitter(0.2))
+
+cacre <- bind_rows(concept_acre, setref_acre, ref_acre)
+
+ggplot(cacre %>% filter(split == "unseen"), aes(x = name, y = loss)) +
+  geom_boxplot()
+```
+
+
+# Dummy I/Entropy plot
+```{r}
+vals <- data.frame(
+  value = c(1, 1, 1, 1, 1, 1),
+  metric = c("H", "H", "H", "I", "I", "I"),
+  name = rep(c("Ref", "Setref", "Concept"), 2)
+) %>% mutate(
+  name = factor(name, levels = c("Ref", "Setref", "Concept"))
+)
+p <- ggplot(vals, aes(x = name, y = value, fill = name)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ metric, scales = "free_y") +
+  ggtitle("Birds") +
+  ylab("") +
+  xlab("") +
+  guides(fill = F)
+
+save_plot("./birds_it.pdf", p, base_height = 3, base_asp = 1.7)
+```
+
+
+
+# Entropy table
+```{r}
+swent <- read_csv("../etc/entropy_results.csv")
+swent %>%
+  group_by(dataset, name) %>%
+  summarize(
+    entropy_mean = mean(entropy),
+    entropy_sd = sd(entropy),
+    mi_mean = mean(mi),
+    mi_sd = sd(mi),
+    ami_mean = mean(ami),
+    ami_sd = sd(ami)
+  )
+```
+
+# Force ref game table
+```{r}
+rf <- read_csv("../etc/force_ref_results.csv")
+
+rf %>% group_by(dataset, name) %>% mutate(traintest_acc = (train_acc + test_acc) / 2, traintest_ts = (train_ts + test_ts) / 2, traintest_langts = (train_langts + test_langts) / 2) %>% summarise_all(list(mean = mean, sd = sd)) %>% select(dataset, name, traintest_langts_mean, traintest_langts_sd)
+
+res <- rf %>%
+  group_by(dataset, name) %>%
+  summarize_all(list(mean = mean, sd = sd)) %>%
+  gather(metric, value, -dataset, -name) %>%
+  mutate(metrictype = ifelse(endsWith(metric, "_sd"), "sd", "mean")) %>%
+  mutate(metric = ifelse(metrictype == "mean", substr(metric, 1, nchar(metric) - 5), substr(metric, 1, nchar(metric) - 3))) %>%
+  spread(metrictype, value) %>%
+  mutate(name = factor(str_to_title(name), levels = c("Ref", "Setref", "Concept"))) %>%
+  mutate(metric = recode(metric, test_acc = "Acc", test_hausdorff = "Rho (Hausdorff)", test_langts = "Rho (Edit)"))
+
+table(res$metric)
+restp <- res %>%
+  filter(metric %in% c("Acc", "Rho (Hausdorff)", "Rho (Edit)"))
+
+ggplot(restp, aes(x = name, y = mean, ymin = mean - sd, ymax = mean + sd, fill = name)) +
+  geom_bar(stat = "identity") +
+  geom_errorbar(width = 0.5) +
+  facet_wrap(~ metric, scales = "free_y") +
+  ylab("") +
+  xlab("") +
+  guides(fill = F)
+```
+
+
+# Zero shot eval table
+```{r}
+zeroshot <- read_csv("../etc/zero_shot_results.csv")
+unique(zeroshot$lang_type)
+unique(zeroshot$metric)
+
+zeroshot %>%
+  filter(metric == "acc" & name == "concept" & lang_type == "ground_truth_1") %>% filter(i != 2)
+
+zsum <- zeroshot %>%
+  filter(!(name == "concept" & i == 2)) %>%
+  group_by(dataset, name, split, lang_type, metric) %>%
+  summarise_all(.funs = list(mean = mean, sd = sd)) %>%
+  filter(lang_type %in% c("closest_concept", "random", "any_concept", "ground_truth_1", "acre")) %>%
+  # filter(lang_type %in% c("closest_concept", "random", "any_concept", "ground_truth_1", "acre", "same_concept")) %>%
+  mutate(
+    lang_type = recode(lang_type, closest_concept = "Closest\nConcept", random = "Random", any_concept = "Any\nConcept", ground_truth_1 = "Model", acre = "acre", same_concept = "Same\nConcept")
+  ) %>%
+  mutate(name = recode(name, concept = "Concept", setref = "Setref")) %>%
+  mutate(
+    lang_type = factor(lang_type, levels = c("Random", "Any\nConcept", "Closest\nConcept", "acre", "Same\nConcept", "Model"))
+  ) %>%
+  mutate(split = str_to_title(split) %>% factor(levels = c("Train", "Test")))
+
+unique(zeroshot$metric)
+
+zsum %>% filter(name == "Setref")
+
+p <- ggplot(zsum %>% filter(name == "Concept") %>% filter(metric != "loss"), aes(x = lang_type, y = value_mean, fill = lang_type)) +
+# p <- ggplot(zsum %>% filter(name == "Concept"), aes(x = lang_type, y = acc_mean, fill = lang_type)) +
+  geom_bar(stat = "identity") +
+  geom_errorbar(mapping = aes(ymin = value_mean - value_sd, ymax = value_mean + value_sd), width = 0.2) +
+  # facet_wrap(. ~ name) +
+  facet_grid(metric ~ split, scales = "free") +
+  # facet_grid(split ~ name, scales = "free_y") +
+  guides(fill = F) +
+  # coord_cartesian(ylim = c(0.5, 0.9)) +
+  ylab("Accuracy") +
+  xlab("")
+
+p <- ggplot(zsum %>% filter(name == "Concept") %>% filter(i != 2 & metric != "loss"), aes(x = lang_type, y = value, group = i, color = factor(i))) +
+  geom_point() +
+  geom_line() +
+  guides(color = F) +
+  # facet_wrap(. ~ name) +
+  facet_grid(metric ~ split, scales = "free") +
+  # facet_grid(split ~ name, scales = "free_y") +
+  guides(fill = F) +
+  # coord_cartesian(ylim = c(0.5, 0.9)) +
+  ylab("") +
+  xlab("")
+
+# T tests
+t.test(
+  (zeroshot %>% filter(name == "concept" & lang_type == "acre" & metric == "acc" & split == "test" & i != 2) %>% .$value),
+  (zeroshot %>% filter(name == "concept" & lang_type == "closest_concept" & metric == "acc" & split == "test" & i != 2) %>% .$value),
+  paired = T
+)
+
+# change name == setref/concept, metric = acc
+t.test(
+  (zeroshot %>% filter(name == "setref" & lang_type == "acre" & metric == "acc" & split == "test" & i != 2) %>% .$value),
+  (zeroshot %>% filter(name == "setref" & lang_type == "closest_concept" & metric == "acc" & split == "test" & i != 2) %>% .$value),
+  paired = T
+)
+
+zsum %>% filter(name == "Concept" & split == "Test")
+
+save_plot("~/Desktop/dummy.png", p, base_height = 4, base_asp = 2)
+
+# wilcox.test(
+#   zeroshot %>% filter(lang_type == "pred" & name == "concept" & metric == "acc" & split == "test") %>% .$value,
+#   zeroshot %>% filter(lang_type == "closest" & name == "concept" & metric == "acc" & split == "test") %>% .$value,
+#   paired = T
+# )
+
+```
+
+# Xent results
+```{r}
+xent_entropy <- read_csv("../etc/xent_entropy_results.csv") %>%
+  group_by(dataset, name) %>%
+  summarise_all(list(mean = mean, sd = sd))
+
+xent <- read_csv("../etc/xent_results.csv") %>%
+  group_by(dataset, name) %>%
+  summarise_all(list(mean = mean, sd = sd)) %>%
+  ungroup
+
+entropy_str <- latex2exp::TeX("$H(M | C)$", output = "character")
+
+xent <- xent %>% left_join(xent_entropy, by = c("dataset", "name")) %>%
+  mutate(acc_mean = (test_acc_mean + train_acc_mean) * 100 / 2) %>%
+  mutate(acc_sd = (test_acc_sd + train_acc_sd) * 100 / 2) %>%
+  gather(metric, value, -dataset, -name) %>%
+  mutate(metrictype = ifelse(endsWith(metric, "_sd"), "sd", "mean")) %>%
+  mutate(metric = ifelse(metrictype == "mean", substr(metric, 1, nchar(metric) - 5), substr(metric, 1, nchar(metric) - 3))) %>%
+  mutate(metric = ifelse(metric == "test_ts" & dataset == "cub", "test_langts", metric)) %>%
+  filter(!(metric == "train_langts" & dataset == "cub")) %>%
+  na.omit %>%
+  distinct %>%
+  spread(metrictype, value) %>%
+  mutate(name = factor(str_to_title(name %>% recode(ref_xent = "Ref\n(Xent)")), levels = c("Ref", "Ref\n(Xent)", "Setref", "Concept"))) %>%
+  mutate(metric = recode(metric, acc = "Acc", test_hausdorff = "rho~(Hausdorff)", test_langts = "rho~(Edit)", entropy = entropy_str, ami = "AMI")) %>%
+  mutate(dataset = recode(dataset, shapeworld_ref = "ShapeWorld", shapeworld = "ShapeWorld", cub = "Birds")) %>%
+  mutate(dataset = factor(dataset, levels = c("ShapeWorld", "Birds")))
+
+
+xentp <- xent %>%
+  filter(metric %in% c("Acc", "rho~(Hausdorff)", "rho~(Edit)", entropy_str, "AMI")) %>%
+  mutate(metric = factor(metric, levels = c("Acc", entropy_str, "AMI", "rho~(Hausdorff)", "rho~(Edit)")))
+
+xentp_birds <- xentp %>% filter(dataset == "Birds")
+xentp_sw <- xentp %>% filter(dataset == "ShapeWorld")
+
+xent_colors <- gg_color_hue(3)
+xent_colors <- c(xent_colors[1], '#fcbbb6', xent_colors[2:3])
+
+plot_xent <- function(data, name) {
+  ggplot(data, aes(x = name, y = mean, ymin = mean - sd, ymax = mean + sd, fill = name)) +
+    geom_bar(stat = "identity") +
+    geom_errorbar(width = 0.5) +
+    facet_wrap(~ metric, scales = "free", labeller = label_parsed, nrow = 1) +
+    ylab("") +
+    xlab("") +
+    guides(fill = F) +
+    ggtitle("Birds") +
+    scale_fill_manual(values = xent_colors) +
+    ggtitle(name)
+}
+
+p <- plot_xent(xentp_birds, "Birds")
+p
+save_plot("./birds_xent.pdf", p, base_height = 3.5, base_asp = 4)
+
+p <- plot_xent(xentp_sw, "ShapeWorld")
+p
+save_plot("./sw_xent.pdf", p, base_height = 3.5, base_asp = 4)
+```
+
+
+# Force ref results
+```{r}
+forceref_entropy <- read_csv("../etc/entropy_force_concept_results.csv") %>%
+  group_by(dataset, name) %>%
+  summarise_all(list(mean = mean, sd = sd)) %>%
+  select(-n_mean, -n_sd) %>%
+  ungroup
+
+forceref_entropy
+
+forceref <- read_csv("../etc/force_setref_results.csv") %>%
+  group_by(dataset, name) %>%
+  mutate(traintest_acc = (train_acc + test_acc) / 2, traintest_ts = (train_ts + test_ts) / 2) %>%
+  summarise_all(list(mean = mean, sd = sd)) %>%
+  select(-n_mean, -n_sd) %>%
+  ungroup
+
+
+forceref %>% select(dataset, name, traintest_acc_mean, traintest_acc_sd)
+
+entropy_str <- latex2exp::TeX("$H(M | C)$", output = "character")
+
+forceref <- forceref %>% left_join(forceref_entropy, by = c("dataset", "name")) %>%
+  mutate(acc_mean = (test_acc_mean + train_acc_mean) * 100 / 2) %>%
+  mutate(acc_sd = (test_acc_sd + train_acc_sd) * 100 / 2) %>%
+  gather(metric, value, -dataset, -name) %>%
+  mutate(metrictype = ifelse(endsWith(metric, "_sd"), "sd", "mean")) %>%
+  mutate(metric = ifelse(metrictype == "mean", substr(metric, 1, nchar(metric) - 5), substr(metric, 1, nchar(metric) - 3))) %>%
+  mutate(metric = ifelse(metric == "test_ts" & dataset == "cub", "test_langts", metric)) %>%
+  filter(!(metric == "train_langts" & dataset == "cub")) %>%
+  na.omit %>%
+  distinct %>%
+  spread(metrictype, value) %>%
+  mutate(name = factor(str_to_title(name %>% recode(ref_forceref = "Ref\n(forceref)")), levels = c("Ref", "Ref\n(forceref)", "Setref", "Concept"))) %>%
+  mutate(metric = recode(metric, acc = "Acc", test_hausdorff = "rho~(Hausdorff)", test_langts = "rho~(Edit)", entropy = entropy_str, ami = "AMI")) %>%
+  mutate(dataset = recode(dataset, shapeworld_ref = "ShapeWorld", shapeworld = "ShapeWorld", cub = "Birds")) %>%
+  mutate(dataset = factor(dataset, levels = c("ShapeWorld", "Birds")))
+
+
+forcerefp <- forceref %>%
+  filter(metric %in% c("Acc", "rho~(Hausdorff)", "rho~(Edit)", entropy_str, "AMI")) %>%
+  mutate(metric = factor(metric, levels = c("Acc", entropy_str, "AMI", "rho~(Hausdorff)", "rho~(Edit)")))
+
+forcerefp_birds <- forcerefp %>% filter(dataset == "Birds")
+forcerefp_sw <- forcerefp %>% filter(dataset == "ShapeWorld")
+
+plot_forceref <- function(data, name, subtitle = NULL) {
+  p <- ggplot(data, aes(x = name, y = mean, ymin = mean - sd, ymax = mean + sd, fill = name)) +
+    geom_bar(stat = "identity") +
+    geom_errorbar(width = 0.5) +
+    facet_wrap(~ metric, scales = "free", labeller = label_parsed, nrow = 1) +
+    ylab("") +
+    xlab("") +
+    guides(fill = F) +
+    ggtitle("Birds") +
+    ggtitle(name)
+  if (!is.null(subtitle)) {
+    p <- p + labs(subtitle = subtitle)
+  }
+}
+
+p <- plot_forceref(forcerefp_birds, "Birds", subtitle = "Eval on reference games")
+p
+save_plot("./birds_forceref.pdf", p, base_height = 3.5, base_asp = 4)
+
+p <- plot_forceref(forcerefp_sw, "ShapeWorld", subtitle = "Eval on reference games")
+p
+save_plot("./sw_forceref.pdf", p, base_height = 3.5, base_asp = 4)
+```
+
+
+# Comm channel
+```{r}
+entropyres <- read_csv("../etc/comm_entropy_results.csv") %>%
+  mutate(dataset = ifelse(dataset == "shapeworld_ref", "shapeworld", dataset))
+
+amires <- entropyres %>% select(name, vocab_size, dataset, ami) %>%
+  rename(value = ami) %>%
+  mutate(metric = "AMI")
+
+entropy_str <- latex2exp::TeX("$H(M | C)$", output = "character")
+
+entropyres <- entropyres %>% select(name, vocab_size, dataset, entropy) %>%
+  rename(value = entropy) %>%
+  mutate(metric = entropy_str)
+
+# ggplot(entropyres, aes(x = factor(vocab_size), y = ami, group = name, color = name)) +
+#   geom_line() +
+#   geom_point() +
+#   facet_wrap(~ dataset, scales = "free_y")
+# 
+# ggplot(entropyres, aes(x = factor(vocab_size), y = entropy, group = name, color = name)) +
+#   geom_line() +
+#   geom_point() +
+#   facet_wrap(~ dataset, scales = "free_y") +
+#   scale_x_discrete(labels = c("S", "M", "L", "XL"))
+
+commres <- read_csv("../etc/comm_results.csv") %>%
+  mutate(dataset = ifelse(dataset == "shapeworld_ref", "shapeworld", dataset)) %>%
+  mutate(traintest_ts = (train_ts + test_ts) / 2) %>%
+  mutate(traintest_langts = (train_langts + test_langts) / 2) %>%
+  mutate(traintest_hausdorff = (train_hausdorff + test_hausdorff) / 2) %>%
+  mutate(train_ts = ifelse(is.na(train_ts), traintest_langts, train_ts)) %>%
+  mutate(train_ts = ifelse(is.na(train_ts), 0.0, train_ts)) %>%
+  mutate(train_hausdorff = traintest_hausdorff) %>%
+  mutate(train_hausdorff = ifelse(is.na(train_hausdorff), 0.0, train_hausdorff))
+
+tsres <- commres %>% select(name, vocab_size, dataset, train_ts) %>%
+  rename(value = train_ts) %>%
+  mutate(metric = "rho~(Edit)")
+
+hausdorffres <- commres %>% select(name, vocab_size, dataset, train_hausdorff) %>%
+  rename(value = train_hausdorff) %>%
+  mutate(metric = "rho~(Hausdorff)")
+
+trainaccres <- commres %>% select(name, vocab_size, dataset, train_acc) %>%
+  rename(value = train_acc) %>%
+  mutate(metric = "Acc~Seen")
+
+testaccres <- commres %>% select(name, vocab_size, dataset, test_acc) %>%
+  rename(value = test_acc) %>%
+  mutate(metric = "Acc~Unseen")
+
+allres <- bind_rows(amires, entropyres, tsres, trainaccres, testaccres, hausdorffres) %>%
+  mutate(metric = factor(metric, levels = c("Acc~Seen", "Acc~Unseen", "AMI", entropy_str, "rho~(Edit)", "rho~(Hausdorff)"))) %>%
+  mutate(name = recode(name, concept = "Concept", ref = "Ref", setref = "Setref")) %>%
+  mutate(name = factor(name, levels = c("Ref", "Setref", "Concept")))
+
+ps <- ggplot(allres %>% filter(dataset == "shapeworld"), aes(x = factor(vocab_size), y = value, group = name, color = name)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ metric, scales = "free_y", nrow = 1, labeller = label_parsed) +
+  ylab("") +
+  scale_x_discrete(labels = c("S", "M", "L", "XL")) +
+  xlab("") +
+  theme(legend.position = "bottom") +
+  labs(color = "") +
+  ggtitle("ShapeWorld")
+
+ps
+bs
+
+BA <- 3
+BH <- 3
+
+save_plot("./shapeworld_vary_comm.pdf", ps, base_asp = BA, base_height = BH)
+
+bs <- ggplot(allres %>% filter(dataset == "cub"), aes(x = factor(vocab_size), y = value, group = name, color = name)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ metric, scales = "free_y", nrow = 1, labeller = label_parsed) +
+  ylab("") +
+  scale_x_discrete(labels = c("S", "M", "L", "XL")) +
+  xlab("") +
+  theme(legend.position = "bottom") +
+  labs(color = "") +
+  ggtitle("Birds")
+
+bs
+
+save_plot("./birds_vary_comm.pdf", bs, base_asp = BA, base_height = BH)
+```

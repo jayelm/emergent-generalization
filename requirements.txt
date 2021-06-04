@@ -1,0 +1,16 @@
+tqdm==4.48.2
+numpy==1.19.1
+torchvision==0.9.1
+ujson==4.0.2
+Jinja2==2.11.2
+scipy==1.5.2
+pandas==1.1.0
+transformers==4.4.2
+hausdorff==0.2.5
+nltk==3.6.2
+h5py==2.10.0
+numba==0.52.0
+editdistance==0.5.3
+torch==1.8.1
+Pillow==8.2.0
+scikit_learn==0.24.2
