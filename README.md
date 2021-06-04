@@ -2,18 +2,20 @@
 
 Preprint - under review
 
-Anonymized supplementary code to accompany NeurIPS 2021 submission. This code
-will be made public in a GitHub repository upon acceptance.
-
 ## Setup
 
 - Download and process birds (CUB) data [here](http://www.vision.caltech.edu/visipedia/CUB-200-2011.html), then unzip into `/data/cub` directory (i.e. the filepath should be `data/cub/CUB_200_2011/*`), then run `python save_cub_np.py` in the `/data` directory to save cub images to easily accessible npz format.
-- Download and process ShapeWorld data: data can be downloaded from `http://anonymized`; unzip into `data/` directory. Alternatively, data can be recreated with the `minishapeworld` repository submitted as supplementary material. There are 3 datasets supplied. You should download all of them, as running concept games loads the reference data for zero-shot eval, etc.
-    - `shapeworld`: 20k games over the 312 conjunctive concepts https://drive.google.com/file/d/1aJhsAxgyCKGotXq5oKLltE8x1_xB4EbR/view?usp=sharing
-    - `shapeworld_ref`: 20k games over the 30 conjunctive concepts possible for
-        reference games only https://drive.google.com/file/d/1ehKQD6r-p-oXjZls-1xCK8dHjiEr-3SC/view?usp=sharing
-    - `shapeworld_all`: 20k games over the 312 conjunctive concepts, *but no
-        compositional split*. https://drive.google.com/file/d/1XJZW-gAjZJflNiSTIVde84UrLjtCMAxB/view?usp=sharing
+- Download and process ShapeWorld data: use `data/download_shapeworld.sh`. There are 3 datasets:
+    - [shapeworld](http://nlp.stanford.edu/data/muj/emergent-generalization/shapeworld/shapeworld.tar.gz): 20k games over the 312 conjunctive concepts
+    - [shapeworld_ref](http://nlp.stanford.edu/data/muj/emergent-generalization/shapeworld/shapeworld_ref.tar.gz): 20k games over the 30 conjunctive concepts possible for
+        reference games only
+    - [shapeworld_all](http://nlp.stanford.edu/data/muj/emergent-generalization/shapeworld/shapeworld_all.tar.gz): 20k games over the 312 conjunctive concepts, *but no
+        compositional split*.
+
+Note that running concept/setref game agents loads the shapeworld ref dataset
+(and vice versa) because we do zero shot eval, so download everything.
+
+Code used for generating the ShapeWorld data is located [here](https://github.com/jayelm/minishapeworld/tree/neurips2021).
 
 ## Running experiments
 
@@ -73,8 +75,10 @@ The above command produces a `metrics.csv` with most metrics, but I measure
 entropy and AMI at the end by sampling a bunch of language from the model and
 analyzing that corpus. To do so, run
 
-`python code/sample.py exp/NAME` (no `--cuda` flag needed; will use whatever
-flag was set at train time)
+```
+# (no --cuda flag needed; will use whatever flag was set at train time)
+python code/sample.py exp/NAME
+```
 
 which by default samples 200k messages from a trained model into
 `exp/NAME/sampled_lang.csv` and some summary statistics into
@@ -91,7 +95,6 @@ which **does not run ACRe**, but rather just dumps some summary statistics:
     each concept, with their counts. Also entropy information. This can be used
     to plot the sunburst (i.e. nested pie) plots in the paper. See "4.
     Visualizing Model Outputs"
-
 
 Again, we haven't actually run ACRe. If you want to run ACRe, read on:
 
@@ -155,10 +158,12 @@ This requires `R` and the `sunburstR` package, as well as a generated
 
 ### 6. Evaluating across different games
 
-To evaluate across different games, sample language while using a `--force_*`
-flag to force the game to be ref, setref, or concept. This adds a
-`_force_{ref,setref,concept}` prefix to every file outputted by `sample.py`,
-e.g. `sampled_lang_force_ref.csv`. For example:
+Accuracy and topographic similarity metrics are evaluated zero-shot across
+different games in the main train script, though entropy/AMI metrics aren't
+collected. To obtain those, and to get all the results in one place, sample
+language while using a `--force_*` flag to force the game to be ref, setref, or
+concept. This adds a `_force_{ref,setref,concept}` prefix to every file
+outputted by `sample.py`, e.g. `sampled_lang_force_ref.csv`. For example:
 
 ```
 python code/sample.py exp/NAME --force_reference_game
