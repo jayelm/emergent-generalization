@@ -40,7 +40,9 @@ def report(
             lang_type: sanitize(lang[game_i]) for lang_type, lang in lang_texts.items()
         }
         lis_accs = {
-            lang_type: (lis_y[game_i].cpu().numpy() == lis_pred[game_i].cpu().numpy()).mean()
+            lang_type: (
+                lis_y[game_i].cpu().numpy() == lis_pred[game_i].cpu().numpy()
+            ).mean()
             for lang_type, lis_pred in lis_preds.items()
         }
 
@@ -50,9 +52,7 @@ def report(
         for lang_type_i, lang_type in enumerate(lang_texts.keys()):
             li = lis_infos[lang_type]
             lp = lis_preds[lang_type]
-            infos.append(
-                ("listener", lang_type_i, lang_type, lis_inp, lis_y, lp, li)
-            )
+            infos.append(("listener", lang_type_i, lang_type, lis_inp, lis_y, lp, li))
 
         for model, lang_type_i, lang_type, inps, labels, preds, info in infos:
             for i in range(inps.shape[1]):

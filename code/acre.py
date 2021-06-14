@@ -39,7 +39,7 @@ class AddFusion(nn.Module):
 class MeanFusion(AddFusion):
     def forward(self, x, y):
         res = super().forward(x, y)
-        return res / 2.
+        return res / 2.0
 
 
 class MultiplyFusion(nn.Module):
@@ -60,9 +60,7 @@ class MLPFusion(nn.Module):
         layers = []
         for i in range(n_layers):
             if i == 0:
-                layers.append(
-                    nn.Linear(self.x_size * 2, self.x_size)
-                )
+                layers.append(nn.Linear(self.x_size * 2, self.x_size))
             else:
                 layers.append(nn.ReLU())
                 layers.append(self.x_size, self.x_size)
@@ -77,12 +75,22 @@ FUSION_MODULES = {
     "add": AddFusion,
     "average": MeanFusion,
     "multiply": MultiplyFusion,
-    "mlp": MLPFusion
+    "mlp": MLPFusion,
 }
 
 
-def get_transformer_encoder_decoder(vocab_size, embedding_size, hidden_size, intermediate_size, num_hidden_layers=2, num_attention_heads=2, max_position_embeddings=60, hidden_act="relu"):
+def get_transformer_encoder_decoder(
+    vocab_size,
+    embedding_size,
+    hidden_size,
+    intermediate_size,
+    num_hidden_layers=2,
+    num_attention_heads=2,
+    max_position_embeddings=60,
+    hidden_act="relu",
+):
     from transformers import BertConfig, EncoderDecoderConfig, EncoderDecoderModel
+
     config = BertConfig(
         vocab_size=vocab_size,
         hidden_size=hidden_size,
@@ -108,7 +116,7 @@ def get_length_from_output(out):
     because there's an annoying possibility that we sample pad indices.
     """
     batch_size = out.shape[0]
-    length = torch.zeros((batch_size, ), dtype=torch.int64, device=out.device)
+    length = torch.zeros((batch_size,), dtype=torch.int64, device=out.device)
     for i in range(batch_size):
         first_eos = (out[i] == language.EOS_IDX).nonzero()[0]
         length[i] = first_eos + 1
@@ -126,6 +134,7 @@ def get_mask_from_length(length):
         this_len = length[i]
         mask[i, :this_len] = 1
     return mask
+
 
 # Transformer-based encoder decoder model, accepts varying levels of operands
 # that are just concatted with special sep token
@@ -153,7 +162,7 @@ class OpT(nn.Module):
             # Just pass in single tokens for encoder and decoder
             batch_size = y.shape[0]
             inp_seq = torch.ones((batch_size, 1), dtype=y.dtype, device=y.device)
-            inp_len = torch.ones((batch_size, ), dtype=y.dtype, device=y.device)
+            inp_len = torch.ones((batch_size,), dtype=y.dtype, device=y.device)
 
         inp_mask = get_mask_from_length(inp_len)
         y_mask = get_mask_from_length(y_len)
@@ -166,7 +175,10 @@ class OpT(nn.Module):
         )
         decode_len = (y_len - 1).cpu()
         logits = pack_padded_sequence(
-            output.logits.cuda(), decode_len, enforce_sorted=False, batch_first=True,
+            output.logits.cuda(),
+            decode_len,
+            enforce_sorted=False,
+            batch_first=True,
         ).data
         targets = pack_padded_sequence(
             y[:, 1:], decode_len, enforce_sorted=False, batch_first=True
@@ -181,7 +193,7 @@ class OpT(nn.Module):
     def sample(self, inp, greedy=False, **kwargs):
         if isinstance(inp, int):
             inp_seq = torch.ones((1, 1), dtype=torch.int64, device=self.seq2seq.device)
-            inp_len = torch.ones((1, ), dtype=torch.int64, device=self.seq2seq.device)
+            inp_len = torch.ones((1,), dtype=torch.int64, device=self.seq2seq.device)
         else:
             inp_seq, inp_len = self.concatenate_input(inp)
 
@@ -214,10 +226,10 @@ class OpT(nn.Module):
             (batch_size, total_max_len),
             language.PAD_IDX,
             device=inp[0].device,
-            dtype=inp[0].dtype
+            dtype=inp[0].dtype,
         )
         total_len = torch.full(
-            (batch_size, ),
+            (batch_size,),
             language.PAD_IDX,
             device=inp[1].device,
             dtype=inp[1].dtype,
@@ -239,7 +251,7 @@ class OpT(nn.Module):
                 this_inp_len = inp[inp_i + 1][i] - 2
 
                 # Ignore sos/eos when copying over sentence
-                total_inp[i, j:j + this_inp_len] = this_inp_seq[1:this_inp_len + 1]
+                total_inp[i, j : j + this_inp_len] = this_inp_seq[1 : this_inp_len + 1]
                 j += this_inp_len
                 i_len += this_inp_len
 
@@ -256,7 +268,7 @@ class OpT(nn.Module):
             total_len[i] = i_len + 2
 
         # Trim
-        total_inp = total_inp[:, :total_len.max()]
+        total_inp = total_inp[:, : total_len.max()]
         return total_inp, total_len
 
 
@@ -271,7 +283,9 @@ class BinOp(nn.Module):
 
         self.fusion = FUSION_MODULES[fusion](hidden_size)
         self.encoder = seq2seq.Encoder(vocab_size, embedding_size, hidden_size)
-        self.decoder = seq2seq.Decoder(vocab_size, hidden_size, embedding_size, hidden_size)
+        self.decoder = seq2seq.Decoder(
+            vocab_size, hidden_size, embedding_size, hidden_size
+        )
 
     def forward(self, inp, y, y_len):
         """
@@ -303,7 +317,9 @@ class UnOp(nn.Module):
         self.hidden_size = hidden_size
 
         self.encoder = seq2seq.Encoder(vocab_size, embedding_size, hidden_size)
-        self.decoder = seq2seq.Decoder(vocab_size, hidden_size, embedding_size, hidden_size)
+        self.decoder = seq2seq.Decoder(
+            vocab_size, hidden_size, embedding_size, hidden_size
+        )
 
     def forward(self, inp, y, y_len):
         """
@@ -326,7 +342,9 @@ class Primitive(nn.Module):
         self.embedding_size = embedding_size
         self.hidden_size = hidden_size
 
-        self.decoder = seq2seq.Decoder(vocab_size, hidden_size, embedding_size, hidden_size)
+        self.decoder = seq2seq.Decoder(
+            vocab_size, hidden_size, embedding_size, hidden_size
+        )
 
     def forward(self, inp, y, y_len):
         """
@@ -344,13 +362,26 @@ class Primitive(nn.Module):
         NOTE: this function has a different signature (accepts batch size since
         it's weird to provide a list of empties)
         """
-        z = torch.zeros((n, self.hidden_size), dtype=torch.float32,
-                        device=self.decoder.fc.weight.device)
+        z = torch.zeros(
+            (n, self.hidden_size),
+            dtype=torch.float32,
+            device=self.decoder.fc.weight.device,
+        )
         return self.decoder.sample(z, **kwargs)
 
 
 class OpDataset:
-    def __init__(self, optype, data, models, vocab_size, greedy_input=False, length=1000, ignore_missing=True, sample=True):
+    def __init__(
+        self,
+        optype,
+        data,
+        models,
+        vocab_size,
+        greedy_input=False,
+        length=1000,
+        ignore_missing=True,
+        sample=True,
+    ):
         self.optype = optype
         self.input = data["in"]
         self.data_size = len(self.input)
@@ -366,9 +397,7 @@ class OpDataset:
 
     def to_idx(self, langs):
         lang_len = np.array([len(t) for t in langs], dtype=np.int)
-        lang_idx = np.full(
-            (len(langs), max(lang_len)), language.PAD_IDX, dtype=np.int
-        )
+        lang_idx = np.full((len(langs), max(lang_len)), language.PAD_IDX, dtype=np.int)
         for i, toks in enumerate(langs):
             for j, tok in enumerate(toks):
                 lang_idx[i, j] = int(tok)
@@ -411,7 +440,9 @@ class OpDataset:
                     else:
                         raise RuntimeError(f"No model for {arg[0]}")
 
-                *primitive_sample, _ = primitive_model.sample(1, greedy=self.greedy_input)
+                *primitive_sample, _ = primitive_model.sample(
+                    1, greedy=self.greedy_input
+                )
 
                 try:
                     op_model = self.models[1][op]
@@ -439,12 +470,12 @@ class OpDataset:
         # Construct the input sequence from the concept
         concept = self.input[i]
         # FIXME - this is inefficient
-        concept_str = lf_to_concept((self.optype, ) + concept)
+        concept_str = lf_to_concept((self.optype,) + concept)
         inp = self.create_input(concept)
         if inp is None:
             return self.sample()  # Try again
 
-        return (concept_str, ) + tuple(inp) + (out_seq, out_len)
+        return (concept_str,) + tuple(inp) + (out_seq, out_len)
 
     def __getitem__(self, i):
         if self.do_sampling:
@@ -455,10 +486,8 @@ class OpDataset:
 
 def collect_data(lang, concepts, concepts_split):
     def data_holder():
-        return {
-            "in": [],
-            "out": []
-        }
+        return {"in": [], "out": []}
+
     data = {
         "all": defaultdict(lambda: defaultdict(data_holder)),
         "train": defaultdict(lambda: defaultdict(data_holder)),
@@ -499,8 +528,9 @@ def pad_collate_varying(batch):
         batch_len = batch_flat[i + 1]
 
         batch_len = torch.tensor(batch_len)
-        batch_pad = pad_sequence(batch_seq, padding_value=language.PAD_IDX,
-                                 batch_first=True)
+        batch_pad = pad_sequence(
+            batch_seq, padding_value=language.PAD_IDX, batch_first=True
+        )
         batch_processed.extend((batch_pad, batch_len))
 
     return batch_processed
@@ -562,7 +592,9 @@ def train_model(model, models, optype, opdata, vocab_size, args):
     )
 
     train_dataset = OpDataset(optype, train_opdata, models, vocab_size)
-    val_dataset = OpDataset(optype, val_opdata, models, vocab_size, sample=False, greedy_input=True)
+    val_dataset = OpDataset(
+        optype, val_opdata, models, vocab_size, sample=False, greedy_input=True
+    )
 
     dataloaders = {
         "train": DataLoader(
@@ -578,7 +610,7 @@ def train_model(model, models, optype, opdata, vocab_size, args):
             collate_fn=pad_collate_varying,
             batch_size=args.batch_size,
             shuffle=False,
-        )
+        ),
     }
 
     def run_for_one_epoch(split, epoch):
@@ -614,13 +646,15 @@ def train_model(model, models, optype, opdata, vocab_size, args):
                 mbc = compute_metrics_by_concept(
                     concepts,
                     loss=losses.detach().cpu().numpy(),
-                    acc=accs.detach().cpu().numpy()
+                    acc=accs.detach().cpu().numpy(),
                 )
                 for concept, concept_metrics in mbc.items():
                     for metric, cms in concept_metrics.items():
                         n_cm = len(cms)
                         cm_mean = np.mean(cms)
-                        stats.update(**{f"{concept}_{metric}": cm_mean}, batch_size=n_cm)
+                        stats.update(
+                            **{f"{concept}_{metric}": cm_mean}, batch_size=n_cm
+                        )
 
             if not training:
                 # TODO - sample and measure top1 accuracy?
@@ -662,7 +696,9 @@ def train_model(model, models, optype, opdata, vocab_size, args):
             best_model_state = copy.deepcopy(model.state_dict())
 
         pbar.update(1)
-        pbar.set_description(f"{epoch} {optype} train loss {train_metrics[loss_key]:3f} train top1 {train_metrics[acc_key]:3f} val loss {val_metrics[loss_key]:3f} val top1 {val_metrics[acc_key]:3f} best loss {metrics[best_loss_key]:3f} @ {metrics[best_epoch_key]}")
+        pbar.set_description(
+            f"{epoch} {optype} train loss {train_metrics[loss_key]:3f} train top1 {train_metrics[acc_key]:3f} val loss {val_metrics[loss_key]:3f} val top1 {val_metrics[acc_key]:3f} best loss {metrics[best_loss_key]:3f} @ {metrics[best_epoch_key]}"
+        )
 
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
@@ -678,18 +714,33 @@ def compute_metrics_by_concept(concepts, **kwargs):
     return metrics_by_concept
 
 
-def sample(split, models, data, vocab_size, exp_args, args, metrics=None, epochs=1,
-           greedy_input=False, greedy=False):
+def sample(
+    split,
+    models,
+    data,
+    vocab_size,
+    exp_args,
+    args,
+    metrics=None,
+    epochs=1,
+    greedy_input=False,
+    greedy=False,
+):
     criterion = nn.CrossEntropyLoss(reduction="none")
 
     if metrics is None:
         metrics = {}
 
     def sample_from_model(m, optype, opdata):
-        dataset = OpDataset(optype, opdata, models, vocab_size, greedy_input=greedy_input)
-        dataloader = DataLoader(dataset, num_workers=0,
-                                collate_fn=pad_collate_varying,
-                                batch_size=args.batch_size)
+        dataset = OpDataset(
+            optype, opdata, models, vocab_size, greedy_input=greedy_input
+        )
+        dataloader = DataLoader(
+            dataset,
+            num_workers=0,
+            collate_fn=pad_collate_varying,
+            batch_size=args.batch_size,
+        )
 
         stats = util.Statistics()
         samples = []
@@ -725,21 +776,35 @@ def sample(split, models, data, vocab_size, exp_args, args, metrics=None, epochs
                             for metric, cms in concept_metrics.items():
                                 n_cm = len(cms)
                                 cm_mean = np.mean(cms)
-                                stats.update(**{f"{concept}_{metric}": cm_mean}, batch_size=n_cm)
+                                stats.update(
+                                    **{f"{concept}_{metric}": cm_mean}, batch_size=n_cm
+                                )
 
                 if len(inp) == 0:
                     inp = out_seq.shape[0]  # Specify a number of samples
 
-                lang, lang_len, _ = m.sample(inp, greedy=greedy, max_length=exp_args.max_lang_length)
-                samples.extend(zip(lang.cpu(), lang_len.cpu(), out_seq.cpu(), out_len.cpu(), concepts))
+                lang, lang_len, _ = m.sample(
+                    inp, greedy=greedy, max_length=exp_args.max_lang_length
+                )
+                samples.extend(
+                    zip(
+                        lang.cpu(),
+                        lang_len.cpu(),
+                        out_seq.cpu(),
+                        out_len.cpu(),
+                        concepts,
+                    )
+                )
 
                 stats.update(loss=loss, acc=acc, batch_size=output_batch_size)
 
         # Coalesce
         sample_names = [
-            "pred_lang", "pred_lang_len",
-            "model_lang", "model_lang_len",
-            "gt_lang"
+            "pred_lang",
+            "pred_lang_len",
+            "model_lang",
+            "model_lang_len",
+            "gt_lang",
         ]
         samples_arrs = list(zip(*samples))
         samples = {name: samples_arrs[i] for i, name in enumerate(sample_names)}
@@ -788,7 +853,7 @@ def get_model(arity, vocab_size, args):
                 vocab_size,
                 args.embedding_size,
                 args.hidden_size,
-                fusion='multiply',
+                fusion="multiply",
             )
     else:
         # Generic transformer model
@@ -823,7 +888,7 @@ def train(data, vocab_size, args):
     return models, metrics
 
 
-TOK_NAMES = string.ascii_lowercase + ''.join(map(str, range(10)))
+TOK_NAMES = string.ascii_lowercase + "".join(map(str, range(10)))
 
 
 def anonymize(out):
@@ -844,7 +909,9 @@ def flatten(nested):
 
 def _flatten(nested):
     if isinstance(nested, str):
-        return [nested, ]
+        return [
+            nested,
+        ]
     else:
         flattened = []
         for item in nested:
@@ -884,8 +951,8 @@ def get_data_stats(data, unique_concepts):
             # Sort language further by concept (i.e. op + args)
             opdata_by_concept = defaultdict(list)
             for inp, out in zip(opdata["in"], opdata["out"]):
-                out = ' '.join(anonymize(out))
-                opdata_by_concept[(optype, ) + inp].append(out)
+                out = " ".join(anonymize(out))
+                opdata_by_concept[(optype,) + inp].append(out)
 
             # Flatten + extend
             a_cs, a_ms = flatten_opdata(opdata_by_concept)
@@ -916,16 +983,18 @@ def get_data_stats(data, unique_concepts):
                 for lang, count in counts.items():
                     percent = counts_norm[lang]
                     concept_flat = " ".join(flatten(concept))
-                    records.append({
-                        "arity": arity,
-                        "type": ctype,
-                        "concept": concept_str,
-                        "lang": lang,
-                        "count": count,
-                        "percent": percent,
-                        "entropy": entropy,
-                        "seen": seen,
-                    })
+                    records.append(
+                        {
+                            "arity": arity,
+                            "type": ctype,
+                            "concept": concept_str,
+                            "lang": lang,
+                            "count": count,
+                            "percent": percent,
+                            "entropy": entropy,
+                            "seen": seen,
+                        }
+                    )
 
     concept_df = pd.DataFrame(records)
 
@@ -960,14 +1029,16 @@ def metrics_to_df(metrics):
             concept = "overall"
             arity = float("nan")
             op = "overall"
-        records.append({
-            "split": split,
-            "concept": concept,
-            "metric": metric,
-            "value": value,
-            "arity": arity,
-            "op": op,
-        })
+        records.append(
+            {
+                "split": split,
+                "concept": concept,
+                "metric": metric,
+                "value": value,
+                "arity": arity,
+                "op": op,
+            }
+        )
     return pd.DataFrame(records)
 
 
@@ -982,7 +1053,7 @@ def split_higher_order_concepts(concepts, test_percent=0.1, seed=None):
     train_concepts = []
     test_concepts = []
     for ctype in ctypes:
-        n_test_concepts = int(.1 * len(ctype))
+        n_test_concepts = int(0.1 * len(ctype))
         ctype = sorted(ctype)
         random.shuffle(ctype)
         train_concepts.extend(ctype[n_test_concepts:])
@@ -994,12 +1065,12 @@ def anonymize_true_lang(tl):
     tl_anon = []
     anon_vocab = {"pad": 0, "sos": 1, "eos": 2}  # these values not used
     for lang in tl:
-        lang_anon = ['1']
+        lang_anon = ["1"]
         for tok in lang:
             if tok not in anon_vocab:
                 anon_vocab[tok] = len(anon_vocab)
             lang_anon.append(str(anon_vocab[tok]))
-        lang_anon.append('2')
+        lang_anon.append("2")
         tl_anon.append(lang_anon)
     return tl_anon
 
@@ -1011,23 +1082,22 @@ def process(lang_file, args):
     lf = pd.read_csv(lang_file, keep_default_na=False)
 
     if args.true_lang:
-        lang = lf['true_lang']
+        lang = lf["true_lang"]
         # Turn true lang into something that looks like lang
         lang = [x.strip().split(" ") for x in lang]
         lang = anonymize_true_lang(lang)
     else:
-        lang = lf['lang']
+        lang = lf["lang"]
         lang = [x.strip().split(" ") for x in lang]
         # Empty strings should be no tokens
         lang = [[] if x == [""] else x for x in lang]
 
     if "shapeworld" in args.dataset:
-        concepts = [concept_to_lf(x) for x in lf['true_lang']]
+        concepts = [concept_to_lf(x) for x in lf["true_lang"]]
         # Load worlds, get concept train/test split
         unique_concepts = get_unique_concepts(args.dataset)
         unique_concepts = {
-            k: list(map(concept_to_lf, vs))
-            for k, vs in unique_concepts.items()
+            k: list(map(concept_to_lf, vs)) for k, vs in unique_concepts.items()
         }
         if not args.standard_split:
             all_concepts = unique_concepts["train"] + unique_concepts["test"]
@@ -1039,24 +1109,30 @@ def process(lang_file, args):
             else:
                 higher_threshold = 2
             primitive_concepts = [v for v in all_concepts if len(v) <= higher_threshold]
-            higher_order_concepts = [v for v in all_concepts if len(v) > higher_threshold]
+            higher_order_concepts = [
+                v for v in all_concepts if len(v) > higher_threshold
+            ]
             train_h_concepts, test_h_concepts = split_higher_order_concepts(
                 higher_order_concepts,
                 seed=0,
             )
             unique_concepts = {
                 "train": primitive_concepts + train_h_concepts,
-                "test": test_h_concepts
+                "test": test_h_concepts,
             }
-        if "force_ref" not in lang_file and "force_concept" not in lang_file and "force_setref" not in lang_file:
+        if (
+            "force_ref" not in lang_file
+            and "force_concept" not in lang_file
+            and "force_setref" not in lang_file
+        ):
             with open(os.path.join(exp_dir, "acre_split.json"), "w") as f:
                 json.dump(unique_concepts, f)
     else:
-        concepts = [(str(x), ) for x in lf['true_lang']]
+        concepts = [(str(x),) for x in lf["true_lang"]]
         unique_concepts = {
             # FIXME - this is slightly off since CUB are 1-indexed.
-            "train": [(str(i), ) for i in range(1, 100)],
-            "test": [(str(i), ) for i in range(150, 200)],
+            "train": [(str(i),) for i in range(1, 100)],
+            "test": [(str(i),) for i in range(150, 200)],
         }
 
     data = collect_data(lang, concepts, unique_concepts)
@@ -1072,40 +1148,63 @@ def process(lang_file, args):
         models, _ = train(data["train"], vocab_size, args)
         # Eval + sample language on both train and test splits
         for split in ["train", "test"]:
-            split_metrics, split_lang = sample(split, models, data[split], vocab_size, exp_args, args,
-                                               epochs=args.sample_epochs,
-                                               greedy=args.greedy,
-                                               greedy_input=args.greedy_input)
+            split_metrics, split_lang = sample(
+                split,
+                models,
+                data[split],
+                vocab_size,
+                exp_args,
+                args,
+                epochs=args.sample_epochs,
+                greedy=args.greedy,
+                greedy_input=args.greedy_input,
+            )
             # Save to metrics
             split_metrics_df = metrics_to_df(split_metrics)
-            split_metrics_df.to_csv(lang_file.replace(".csv", f"_{split}_acre_metrics.csv"), index=False)
-            torch.save(split_lang, lang_file.replace(".csv", f"_{split}_sampled_lang.pt"))
+            split_metrics_df.to_csv(
+                lang_file.replace(".csv", f"_{split}_acre_metrics.csv"), index=False
+            )
+            torch.save(
+                split_lang, lang_file.replace(".csv", f"_{split}_sampled_lang.pt")
+            )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
     parser = ArgumentParser(
-        description=__doc__,
-        formatter_class=ArgumentDefaultsHelpFormatter)
+        description=__doc__, formatter_class=ArgumentDefaultsHelpFormatter
+    )
 
-    parser.add_argument('lang_files', nargs="+")
-    parser.add_argument('--model_type', choices=["rnn", "transformer"], default="rnn")
-    parser.add_argument('--dataset', default="./data/shapeworld")
-    parser.add_argument('--embedding_size', default=50, type=int)
-    parser.add_argument('--standard_split', action="store_true", help="Use default train/test split")
-    parser.add_argument('--hidden_size', default=100, type=int)
-    parser.add_argument('--true_lang', action='store_true', help="Use true language")
-    parser.add_argument('--epochs', default=20, type=int)
-    parser.add_argument('--sample_epochs', default=5, type=int)
-    parser.add_argument('--batch_size', default=32, type=int)
-    parser.add_argument('--cuda', action='store_true')
-    parser.add_argument('--debug', action='store_true')
-    parser.add_argument('--stats_only', action='store_true')
-    parser.add_argument('--no_train', action='store_true')
-    parser.add_argument('--greedy', action='store_true', help="Greedy decoding from ACRe model")
-    parser.add_argument('--include_not', action='store_true', help="Include NOT operators (by default excluded since transformer doesn't generalize across NOT even w/ true_lang")
-    parser.add_argument('--greedy_input', action='store_true', help="Greedy decoding from models that constitute ACRe model")
+    parser.add_argument("lang_files", nargs="+")
+    parser.add_argument("--model_type", choices=["rnn", "transformer"], default="rnn")
+    parser.add_argument("--dataset", default="./data/shapeworld")
+    parser.add_argument("--embedding_size", default=50, type=int)
+    parser.add_argument(
+        "--standard_split", action="store_true", help="Use default train/test split"
+    )
+    parser.add_argument("--hidden_size", default=100, type=int)
+    parser.add_argument("--true_lang", action="store_true", help="Use true language")
+    parser.add_argument("--epochs", default=20, type=int)
+    parser.add_argument("--sample_epochs", default=5, type=int)
+    parser.add_argument("--batch_size", default=32, type=int)
+    parser.add_argument("--cuda", action="store_true")
+    parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--stats_only", action="store_true")
+    parser.add_argument("--no_train", action="store_true")
+    parser.add_argument(
+        "--greedy", action="store_true", help="Greedy decoding from ACRe model"
+    )
+    parser.add_argument(
+        "--include_not",
+        action="store_true",
+        help="Include NOT operators (by default excluded since transformer doesn't generalize across NOT even w/ true_lang",
+    )
+    parser.add_argument(
+        "--greedy_input",
+        action="store_true",
+        help="Greedy decoding from models that constitute ACRe model",
+    )
 
     args = parser.parse_args()
 

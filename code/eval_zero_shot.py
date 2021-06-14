@@ -29,21 +29,25 @@ from nltk.translate.bleu_score import sentence_bleu
 
 
 def sentence_bleu1(references, hypothesis):
-    return sentence_bleu(references, hypothesis, weights=(1.,))
+    return sentence_bleu(references, hypothesis, weights=(1.0,))
 
 
 def get_acre_lang(sampled_lang):
     acre_lang = defaultdict(lambda: defaultdict(list))
     for i, concept in enumerate(sampled_lang["gt_lang"]):
-        acre_lang[concept]["acre"].append((
-            sampled_lang["pred_lang"][i],
-            sampled_lang["pred_lang_len"][i],
-        ))
+        acre_lang[concept]["acre"].append(
+            (
+                sampled_lang["pred_lang"][i],
+                sampled_lang["pred_lang_len"][i],
+            )
+        )
 
-        acre_lang[concept]["ground_truth_1"].append((
-            sampled_lang["model_lang"][i],
-            sampled_lang["model_lang_len"][i],
-        ))
+        acre_lang[concept]["ground_truth_1"].append(
+            (
+                sampled_lang["model_lang"][i],
+                sampled_lang["model_lang_len"][i],
+            )
+        )
     return acre_lang
 
 
@@ -71,7 +75,7 @@ def sample_acre_lang(true_lang, acre_lang, dataset, vocab_size):
         lang_pad = pad_sequence(sampled_lang, batch_first=True)
         lang_len = torch.tensor(sampled_lang_len)
         # Trim language length
-        lang_pad = lang_pad[:, :lang_len.max()]
+        lang_pad = lang_pad[:, : lang_len.max()]
         # To onehot
         lang_pad = F.one_hot(lang_pad, num_classes=vocab_size)
         lang_pad = lang_pad.float()
@@ -107,9 +111,7 @@ def randstr(maxlen, nchar=26):
 def emergent_to_idx(langs):
     # Add SOS, EOS
     lang_len = np.array([len(t) for t in langs], dtype=np.int)
-    lang_idx = np.full(
-        (len(langs), max(lang_len)), data.language.PAD_IDX, dtype=np.int
-    )
+    lang_idx = np.full((len(langs), max(lang_len)), data.language.PAD_IDX, dtype=np.int)
     for i, toks in enumerate(langs):
         for j, tok in enumerate(toks):
             lang_idx[i, j] = int(tok)
@@ -127,7 +129,9 @@ def pairs_to_lang(pairs, vocab_size):
 
 
 def get_lang_per_concept(exp_dir):
-    slang = pd.read_csv(os.path.join(exp_dir, "sampled_lang.csv"), keep_default_na=False)
+    slang = pd.read_csv(
+        os.path.join(exp_dir, "sampled_lang.csv"), keep_default_na=False
+    )
     emergent_idx = emergent_to_idx(slang["lang"].str.strip().str.split(" "))
     # From concepts to language
     lang_per_concept = defaultdict(list)
@@ -156,7 +160,9 @@ def sample_other_lang(n, lang_per_concept, vocab_size):
     return pairs_to_lang(langs, vocab_size)
 
 
-def sample_other_lang_from_closest_concept(concepts, concept_distances, lang_per_concept, vocab_size):
+def sample_other_lang_from_closest_concept(
+    concepts, concept_distances, lang_per_concept, vocab_size
+):
     closests = []
     for c in concepts:
         c = c[4:-5]
@@ -180,7 +186,9 @@ class PairwiseDistances:
         self.c2i = {v: k for k, v in enumerate(concepts)}
         self.i2c = dict(enumerate(concepts))
         self.concept_tuples = [tuple(c.split(" ")) for c in concepts]
-        self.distances = emergence.python_pdist(self.concept_tuples, emergence.edit_distance)
+        self.distances = emergence.python_pdist(
+            self.concept_tuples, emergence.edit_distance
+        )
         self.distances = squareform(self.distances)
 
     def __getitem__(self, pair):
@@ -217,7 +225,7 @@ def get_acre_split(exp_dir):
     # Map to tuples
     return {
         "train": set(to_tuple(acre_split["train"])),
-        "test": set(to_tuple(acre_split["test"]))
+        "test": set(to_tuple(acre_split["test"])),
     }
 
 
@@ -242,7 +250,9 @@ def compute_metrics_by_concept(concepts, **kwargs):
     return metrics_by_concept
 
 
-def eval_zero_shot(split, pair, dataloaders, sampled_lang, exp_args, args, epochs=1, n_vis=500):
+def eval_zero_shot(
+    split, pair, dataloaders, sampled_lang, exp_args, args, epochs=1, n_vis=500
+):
     other_split = "test" if split == "train" else "train"
     pair.eval()
 
@@ -253,8 +263,7 @@ def eval_zero_shot(split, pair, dataloaders, sampled_lang, exp_args, args, epoch
     lang_per_concept = get_lang_per_concept(args.exp_dir)
     lpc_counts = get_lang_per_concept_counts(lang_per_concept)
     lpc_unique = {
-        c: list(set(list(lang_counts.keys())))
-        for c, lang_counts in lpc_counts.items()
+        c: list(set(list(lang_counts.keys()))) for c, lang_counts in lpc_counts.items()
     }
     # lang_type -> {concept -> counts}
     lang_types_per_concept = defaultdict(lambda: defaultdict(Counter))
@@ -281,7 +290,7 @@ def eval_zero_shot(split, pair, dataloaders, sampled_lang, exp_args, args, epoch
             for batch_i, batch in enumerate(tqdm(dataloader, desc=dataloader_split)):
                 spk_inp, spk_y, lis_inp, lis_y, true_lang, md, idx = batch
 
-                if dataloader.dataset.name == 'shapeworld':
+                if dataloader.dataset.name == "shapeworld":
                     spk_inp = spk_inp.float() / 255
                     lis_inp = lis_inp.float() / 255
                 else:
@@ -357,12 +366,17 @@ def eval_zero_shot(split, pair, dataloaders, sampled_lang, exp_args, args, epoch
 
                 # Also sample from speaker (sanity check)
                 with torch.no_grad():
-                    spk_lang, _ = pair.speaker(spk_inp, spk_y, max_len=exp_args.max_lang_length)
+                    spk_lang, _ = pair.speaker(
+                        spk_inp, spk_y, max_len=exp_args.max_lang_length
+                    )
                     langs["ground_truth_2"] = spk_lang
 
                 # Finally, filter out the original acre language
                 for ltype in ["acre", "ground_truth_1"]:
-                    langs[ltype] = (langs[ltype][0][has_language], langs[ltype][1][has_language])
+                    langs[ltype] = (
+                        langs[ltype][0][has_language],
+                        langs[ltype][1][has_language],
+                    )
 
                 # Eval all language types
                 for lang_type, (lang, lang_length) in langs.items():
@@ -409,19 +423,22 @@ def eval_zero_shot(split, pair, dataloaders, sampled_lang, exp_args, args, epoch
                             f"{lang_type}_acc": this_acc,
                             f"{lang_type}_bleu": bleu1,
                         },
-                        batch_size=lis_scores.shape[0]
+                        batch_size=lis_scores.shape[0],
                     )
 
                     # Metrics by concept
-                    mbc = compute_metrics_by_concept(
-                        concepts, acc=per_game_acc
-                    )
+                    mbc = compute_metrics_by_concept(concepts, acc=per_game_acc)
                     for concept, concept_metrics in mbc.items():
                         for metric, cms in concept_metrics.items():
                             n_cm = len(cms)
                             cm_mean = np.mean(cms)
                             concept_underscore = concept[4:-5].replace(" ", "_")
-                            stats.update(**{f"{lang_type}_{concept_underscore}_{metric}": cm_mean}, batch_size=n_cm)
+                            stats.update(
+                                **{
+                                    f"{lang_type}_{concept_underscore}_{metric}": cm_mean
+                                },
+                                batch_size=n_cm,
+                            )
 
                     # Save processed text
                     if n_vis_so_far < n_vis:
@@ -435,7 +452,9 @@ def eval_zero_shot(split, pair, dataloaders, sampled_lang, exp_args, args, epoch
 
                 # For visualization
                 if n_vis_so_far < n_vis:
-                    vis_true_lang.append(dataloader.dataset.to_text(true_lang, join=True))
+                    vis_true_lang.append(
+                        dataloader.dataset.to_text(true_lang, join=True)
+                    )
                     vis_spk_inp.append(spk_inp.cpu())
                     vis_spk_y.append(spk_y.cpu())
                     vis_lis_inp.append(lis_inp.cpu())
@@ -486,29 +505,31 @@ def get_lang_type_records(lang_types, **kwargs):
             entropy = scipy.stats.entropy(list(counts.values()))
 
             for lang, count in counts.items():
-                records.append({
-                    "concept": concept,
-                    "lang": lang,
-                    "count": count,
-                    # I never use percent, so no need
-                    #  "percent": counts_norm[lang],
-                    "entropy": entropy,
-                    "lang_type": lang_type,
-                    **kwargs,
-                })
+                records.append(
+                    {
+                        "concept": concept,
+                        "lang": lang,
+                        "count": count,
+                        # I never use percent, so no need
+                        #  "percent": counts_norm[lang],
+                        "entropy": entropy,
+                        "lang_type": lang_type,
+                        **kwargs,
+                    }
+                )
     return records
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, Namespace
 
     parser = ArgumentParser(
-        description=__doc__,
-        formatter_class=ArgumentDefaultsHelpFormatter)
+        description=__doc__, formatter_class=ArgumentDefaultsHelpFormatter
+    )
 
-    parser.add_argument('exp_dir')
-    parser.add_argument('--cuda', action='store_true')
-    parser.add_argument('--epochs', type=int, default=5)
+    parser.add_argument("exp_dir")
+    parser.add_argument("--cuda", action="store_true")
+    parser.add_argument("--epochs", type=int, default=5)
 
     args = parser.parse_args()
 
@@ -528,10 +549,16 @@ if __name__ == '__main__':
     # maybe concatenate train, val, test?
     lang_type_records = []
     for split in ["train", "test"]:
-        sampled_lang = torch.load(os.path.join(args.exp_dir, f"sampled_lang_{split}_sampled_lang.pt"))
-        metrics, records = eval_zero_shot(split, pair, dataloaders, sampled_lang, exp_args, args, epochs=args.epochs)
+        sampled_lang = torch.load(
+            os.path.join(args.exp_dir, f"sampled_lang_{split}_sampled_lang.pt")
+        )
+        metrics, records = eval_zero_shot(
+            split, pair, dataloaders, sampled_lang, exp_args, args, epochs=args.epochs
+        )
         with open(os.path.join(args.exp_dir, f"zero_shot_{split}.json"), "w") as f:
             json.dump(metrics, f)
         lang_type_records.extend(records)
 
-    pd.DataFrame(lang_type_records).to_csv(os.path.join(args.exp_dir, "zero_shot_lang_type_stats.csv"), index=False)
+    pd.DataFrame(lang_type_records).to_csv(
+        os.path.join(args.exp_dir, "zero_shot_lang_type_stats.csv"), index=False
+    )

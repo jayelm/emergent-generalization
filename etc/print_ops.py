@@ -1,4 +1,5 @@
 import sys
+
 sys.path.append("./code")
 
 from data.shapeworld import concept_to_lf, COLORS, SHAPES
@@ -17,21 +18,30 @@ def get_nots(concept_counts):
         feat_counts = concept_counts[feat_lf]
         neg_feat_counts = concept_counts[neg_feat_lf]
 
-        feat_counts_norm = Counter({k: v / sum(feat_counts.values()) for k, v in feat_counts.items()})
-        neg_feat_counts_norm = Counter({k: v / sum(neg_feat_counts.values()) for k, v in neg_feat_counts.items()})
+        feat_counts_norm = Counter(
+            {k: v / sum(feat_counts.values()) for k, v in feat_counts.items()}
+        )
+        neg_feat_counts_norm = Counter(
+            {k: v / sum(neg_feat_counts.values()) for k, v in neg_feat_counts.items()}
+        )
 
         feat_lang, feat_pct = feat_counts_norm.most_common(1)[0]
         neg_feat_lang, neg_feat_pct = neg_feat_counts_norm.most_common(1)[0]
 
-        not_records.append((
-            feat,
-            feat_lang,
-            feat_pct,
-            neg_feat,
-            neg_feat_lang,
-            neg_feat_pct,
-        ))
-    not_df = pd.DataFrame.from_records(not_records, columns=["pos", "pos_lang", "pos_pct", "neg", "neg_lang", "neg_pct"])
+        not_records.append(
+            (
+                feat,
+                feat_lang,
+                feat_pct,
+                neg_feat,
+                neg_feat_lang,
+                neg_feat_pct,
+            )
+        )
+    not_df = pd.DataFrame.from_records(
+        not_records,
+        columns=["pos", "pos_lang", "pos_pct", "neg", "neg_lang", "neg_pct"],
+    )
     return not_df
 
 
@@ -56,37 +66,58 @@ def get_binop(concept_counts, op="or"):
             feat2_counts = concept_counts[feat2_lf]
             or_feat_counts = concept_counts[or_feat_lf]
 
-            feat1_counts_norm = Counter({k: v / sum(feat1_counts.values()) for k, v in feat1_counts.items()})
-            feat2_counts_norm = Counter({k: v / sum(feat2_counts.values()) for k, v in feat2_counts.items()})
-            or_feat_counts_norm = Counter({k: v / sum(or_feat_counts.values()) for k, v in or_feat_counts.items()})
+            feat1_counts_norm = Counter(
+                {k: v / sum(feat1_counts.values()) for k, v in feat1_counts.items()}
+            )
+            feat2_counts_norm = Counter(
+                {k: v / sum(feat2_counts.values()) for k, v in feat2_counts.items()}
+            )
+            or_feat_counts_norm = Counter(
+                {k: v / sum(or_feat_counts.values()) for k, v in or_feat_counts.items()}
+            )
 
             feat1_lang, feat1_pct = feat1_counts_norm.most_common(1)[0]
             feat2_lang, feat2_pct = feat2_counts_norm.most_common(1)[0]
             or_feat_lang, or_feat_pct = or_feat_counts_norm.most_common(1)[0]
 
-            or_records.append((
-                feat1,
-                feat1_lang,
-                feat1_pct,
-                feat2,
-                feat2_lang,
-                feat2_pct,
-                or_feat,
-                or_feat_lang,
-                or_feat_pct,
-            ))
-    or_df = pd.DataFrame.from_records(or_records, columns=["feat1", "feat1_lang", "feat1_pct", "feat2", "feat2_lang", "feat2_pct", f"{op}_feat", f"{op}_feat_lang", f"{op}_feat_pct"])
+            or_records.append(
+                (
+                    feat1,
+                    feat1_lang,
+                    feat1_pct,
+                    feat2,
+                    feat2_lang,
+                    feat2_pct,
+                    or_feat,
+                    or_feat_lang,
+                    or_feat_pct,
+                )
+            )
+    or_df = pd.DataFrame.from_records(
+        or_records,
+        columns=[
+            "feat1",
+            "feat1_lang",
+            "feat1_pct",
+            "feat2",
+            "feat2_lang",
+            "feat2_pct",
+            f"{op}_feat",
+            f"{op}_feat_lang",
+            f"{op}_feat_pct",
+        ],
+    )
     return or_df
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
     parser = ArgumentParser(
-        description='print ops',
-        formatter_class=ArgumentDefaultsHelpFormatter)
+        description="print ops", formatter_class=ArgumentDefaultsHelpFormatter
+    )
 
-    parser.add_argument('lang_file')
+    parser.add_argument("lang_file")
 
     args = parser.parse_args()
 

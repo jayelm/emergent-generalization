@@ -46,7 +46,7 @@ def get_unique_concepts(dfolder):
 
     return {
         "train": set(list(split_langs["train"])),
-        "test": set(list(split_langs["val"]) + list(split_langs["test"]))
+        "test": set(list(split_langs["val"]) + list(split_langs["test"])),
     }
 
 
@@ -64,19 +64,15 @@ def _concept_to_lf(concept):
     if op:
         op_index = concept.index(op)
         left = concept[:op_index]
-        right = concept[op_index + 1:]
-        return (
-            op,
-            _concept_to_lf(left),
-            _concept_to_lf(right)
-        )
+        right = concept[op_index + 1 :]
+        return (op, _concept_to_lf(left), _concept_to_lf(right))
 
     if "not" in concept:
         assert len(concept) == 2, f"unable to parse {concept}"
-        return ("not", (concept[1], ))
+        return ("not", (concept[1],))
 
     assert len(concept) == 1, f"unable to parse {concept}"
-    return (concept[0], )
+    return (concept[0],)
 
 
 def concept_to_lf(concept, split=True):
@@ -180,8 +176,9 @@ def load(args, fast=False):
                 raise RuntimeError(f"Can't find {sfile} or {sfile_hdf5}")
             else:
                 continue
-        datas[split] = load_split(args.dataset, split, fast=fast,
-                                  into_memory=args.load_shapeworld_into_memory)
+        datas[split] = load_split(
+            args.dataset, split, fast=fast, into_memory=args.load_shapeworld_into_memory
+        )
 
     langs = np.concatenate([datas[s]["langs"] for s in datas])
     vocab = language.init_vocab(langs)
@@ -203,7 +200,7 @@ def load(args, fast=False):
     dataset_kwargs = {
         "n_examples": args.n_examples,
         "visfunc": generic.vis_image,
-        "name": 'shapeworld',
+        "name": "shapeworld",
         "image_size": image_size,
     }
 
@@ -227,8 +224,13 @@ def load(args, fast=False):
     this_game_type = util.get_game_type(args)
     for _split in ["val", "test", "val_same", "test_same"]:
         # Load the other dataset
-        other_data = load_other_data(this_game_type, _split, args.dataset, fast=fast,
-                                     into_memory=args.load_shapeworld_into_memory)
+        other_data = load_other_data(
+            this_game_type,
+            _split,
+            args.dataset,
+            fast=fast,
+            into_memory=args.load_shapeworld_into_memory,
+        )
         other_data["metadata"] = get_metadata(other_data["langs"], md_vocab)[0]
         # other_vocab is used to measure the correct concept distances
         other_vocab = language.init_vocab(other_data["langs"])
@@ -238,7 +240,9 @@ def load(args, fast=False):
             other_concept_distances = None
         else:
             other_concepts = concepts_to_onehot(other_data["concepts"])
-            other_concept_distances = util.get_pairwise_hausdorff_distances(other_concepts)
+            other_concept_distances = util.get_pairwise_hausdorff_distances(
+                other_concepts
+            )
 
         for game_type in ["ref", "setref", "concept"]:
             split = f"{_split}_{game_type}"
@@ -255,7 +259,7 @@ def load(args, fast=False):
                     concepts=other_concepts,
                     concept_distances=other_concept_distances,
                     metadata_vocab=md_vocab,
-                    **dataset_kwargs
+                    **dataset_kwargs,
                 )
 
     return datasets
@@ -416,7 +420,9 @@ class ShapeWorldDataset(generic.ConceptDataset):
             for j in range(n_img):
                 shape_lang_idx[i, j, 0] = self.w2i[language.SOS_TOKEN]
                 for tok_i, tok in enumerate(self.shapes[i][j], start=1):
-                    shape_lang_idx[i, j, tok_i] = self.w2i.get(tok, self.w2i[language.UNK_TOKEN])
+                    shape_lang_idx[i, j, tok_i] = self.w2i.get(
+                        tok, self.w2i[language.UNK_TOKEN]
+                    )
                 shape_lang_idx[i, j, -1] = self.w2i[language.EOS_TOKEN]
         return shape_lang_idx, shape_lang_len
 

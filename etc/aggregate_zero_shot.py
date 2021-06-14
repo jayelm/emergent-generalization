@@ -55,16 +55,18 @@ def load_run(run, **kwargs):
     return run_records
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
     parser = ArgumentParser(
-        description=__doc__,
-        formatter_class=ArgumentDefaultsHelpFormatter)
+        description=__doc__, formatter_class=ArgumentDefaultsHelpFormatter
+    )
 
     args = parser.parse_args()
 
     swc = load_all(SW["concept"], dataset="cub", name="concept")
     swsr = load_all(SW["setref"], dataset="cub", name="setref")
 
-    pd.DataFrame.from_records(swc + swsr).to_csv("etc/zero_shot_results.csv", index=False)
+    pd.DataFrame.from_records(swc + swsr).to_csv(
+        "etc/zero_shot_results.csv", index=False
+    )

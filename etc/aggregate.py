@@ -91,19 +91,19 @@ def load_run(run, fname):
     # Check for sampled lang stats
     sampled_lang_stats_fname = os.path.join(run, fname)
     if os.path.exists(sampled_lang_stats_fname):
-        with open(sampled_lang_stats_fname, 'r') as f:
+        with open(sampled_lang_stats_fname, "r") as f:
             return json.load(f)
 
     print(f"Can't find {sampled_lang_stats_fname}")
     return {}
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
     parser = ArgumentParser(
-        description=__doc__,
-        formatter_class=ArgumentDefaultsHelpFormatter)
+        description=__doc__, formatter_class=ArgumentDefaultsHelpFormatter
+    )
 
     args = parser.parse_args()
 
@@ -111,16 +111,26 @@ if __name__ == '__main__':
         ("sampled_lang_overall_stats.json", "entropy_results.csv"),
         ("sampled_lang_force_ref_overall_stats.json", "entropy_force_ref_results.csv"),
         ("sampled_stats_force_ref.json", "force_ref_results.csv"),
-        ("sampled_lang_force_concept_overall_stats.json", "entropy_force_concept_results.csv"),
+        (
+            "sampled_lang_force_concept_overall_stats.json",
+            "entropy_force_concept_results.csv",
+        ),
         ("sampled_stats_force_concept.json", "force_concept_results.csv"),
-        ("sampled_lang_force_setref_overall_stats.json", "entropy_force_setref_results.csv"),
+        (
+            "sampled_lang_force_setref_overall_stats.json",
+            "entropy_force_setref_results.csv",
+        ),
         ("sampled_stats_force_setref.json", "force_setref_results.csv"),
     ]
 
     # Standard results - ref vs concept vs setref, standard eval
     for json_name, out_name in fnames:
-        swc = load_all(SW["concept"], dataset="shapeworld", name="concept", fname=json_name)
-        swsr = load_all(SW["setref"], dataset="shapeworld", name="setref", fname=json_name)
+        swc = load_all(
+            SW["concept"], dataset="shapeworld", name="concept", fname=json_name
+        )
+        swsr = load_all(
+            SW["setref"], dataset="shapeworld", name="setref", fname=json_name
+        )
         swr = load_all(SW["ref"], dataset="shapeworld_ref", name="ref", fname=json_name)
 
         sw = swc + swsr + swr
@@ -132,7 +142,9 @@ if __name__ == '__main__':
         c = cc + csr + cr
 
         alls = sw + c
-        pd.DataFrame.from_records(alls).to_csv(os.path.join("etc", out_name), index=False)
+        pd.DataFrame.from_records(alls).to_csv(
+            os.path.join("etc", out_name), index=False
+        )
 
     # Ref xent results - all standard eval (i.e. no need to force)
     fnames = [
@@ -140,10 +152,16 @@ if __name__ == '__main__':
         ("sampled_stats.json", "xent_results.csv"),
     ]
     for json_name, out_name in fnames:
-        swc = load_all(SW["concept"], dataset="shapeworld", name="concept", fname=json_name)
-        swsr = load_all(SW["setref"], dataset="shapeworld", name="setref", fname=json_name)
+        swc = load_all(
+            SW["concept"], dataset="shapeworld", name="concept", fname=json_name
+        )
+        swsr = load_all(
+            SW["setref"], dataset="shapeworld", name="setref", fname=json_name
+        )
         swr = load_all(SW["ref"], dataset="shapeworld_ref", name="ref", fname=json_name)
-        swrx = load_all(SW["ref_xent"], dataset="shapeworld_ref", name="ref_xent", fname=json_name)
+        swrx = load_all(
+            SW["ref_xent"], dataset="shapeworld_ref", name="ref_xent", fname=json_name
+        )
 
         sw = swc + swsr + swr + swrx
 
@@ -155,4 +173,6 @@ if __name__ == '__main__':
         c = cc + csr + cr + crx
 
         alls = sw + c
-        pd.DataFrame.from_records(alls).to_csv(os.path.join("etc", out_name), index=False)
+        pd.DataFrame.from_records(alls).to_csv(
+            os.path.join("etc", out_name), index=False
+        )

@@ -41,7 +41,7 @@ def convert_lang_to_numeric(lang, lang_length, pad_val=-1, skip_sos_eos=True):
 
         if skip_sos_eos:
             # zero out EOS
-            lang_i[i, length - 1:] = pad_val
+            lang_i[i, length - 1 :] = pad_val
         else:
             lang_i[i, length:] = pad_val
 
@@ -80,13 +80,21 @@ def subsample(items, idx):
     return [items[i] for i in idx]
 
 
-def compute_lang_metrics(all_lang, dataset, args, attrs=None,
-                         reprs=None,
-                         attrs_numeric=None, toks=None,
-                         max_analysis_length=1000):
+def compute_lang_metrics(
+    all_lang,
+    dataset,
+    args,
+    attrs=None,
+    reprs=None,
+    attrs_numeric=None,
+    toks=None,
+    max_analysis_length=1000,
+):
     lang_metrics = {}
     if all_lang.shape[0] > max_analysis_length:
-        idx = np.random.choice(all_lang.shape[0], size=max_analysis_length, replace=False)
+        idx = np.random.choice(
+            all_lang.shape[0], size=max_analysis_length, replace=False
+        )
 
         all_lang = all_lang.iloc[idx].reset_index()
 
@@ -100,36 +108,48 @@ def compute_lang_metrics(all_lang, dataset, args, attrs=None,
     # topographic similarity between ground truth language and tokens
     # only do it if the ground truth language is meaningful
     if dataset.name == "shapeworld":
-        langts = emergence.topsim(all_lang['true_lang'], toks, meaning_distance_fn='edit')
+        langts = emergence.topsim(
+            all_lang["true_lang"], toks, meaning_distance_fn="edit"
+        )
         lang_metrics["langts"] = langts
 
     if dataset.name == "shapeworld":
+
         def compute_hd(tl1, tl2):
             # Remove SOS, EOS
-            tl1 = ' '.join(tl1[1:-1])
-            tl2 = ' '.join(tl2[1:-1])
+            tl1 = " ".join(tl1[1:-1])
+            tl2 = " ".join(tl2[1:-1])
             return dataset.concept_distance(tl1, tl2)
+
     elif dataset.name == "cub":
+
         def compute_hd(tl1, tl2):
             tl1 = int(tl1[1])
             tl2 = int(tl2[1])
             return dataset.concept_distance(tl1, tl2)
 
     if dataset.concept_distances is not None:
-        hd = emergence.topsim(all_lang['true_lang'], toks, meaning_distance_fn=compute_hd)
+        hd = emergence.topsim(
+            all_lang["true_lang"], toks, meaning_distance_fn=compute_hd
+        )
         lang_metrics["hausdorff"] = hd
 
     if attrs is not None:
         # topographic similarity between meanings and tokens
-        ts = emergence.topsim(attrs, toks, meaning_distance_fn=dataset.meaning_distance_fn)
+        ts = emergence.topsim(
+            attrs, toks, meaning_distance_fn=dataset.meaning_distance_fn
+        )
         lang_metrics["ts"] = ts
 
         # topographic similarity between reprs and attributes
         # For random sets later, worth disentangling prototype repr from
         # individual inputs repr
         reprts = emergence.topsim(
-            attrs, reprs, meaning_distance_fn=dataset.meaning_distance_fn,
-            message_distance_fn='euclidean')
+            attrs,
+            reprs,
+            meaning_distance_fn=dataset.meaning_distance_fn,
+            message_distance_fn="euclidean",
+        )
         lang_metrics["reprts"] = reprts
 
     return lang_metrics
@@ -137,11 +157,7 @@ def compute_lang_metrics(all_lang, dataset, args, attrs=None,
 
 def compute_metrics_by_md(all_lang, md_vocab=None):
     metrics_by_md = {}
-    per_md_acc = (
-        all_lang[["md", "acc"]]
-        .groupby("md")
-        .mean()
-    )
+    per_md_acc = all_lang[["md", "acc"]].groupby("md").mean()
     for i, md_row in per_md_acc.iterrows():
         if md_vocab is None:
             md_name = str(md_row.name)
@@ -150,6 +166,7 @@ def compute_metrics_by_md(all_lang, md_vocab=None):
         md_key = f"acc_md_{md_name}"
         metrics_by_md[md_key] = md_row["acc"]
     return metrics_by_md
+
 
 def log_epoch_summary(epoch, split, metrics):
     logging.info(
@@ -250,8 +267,12 @@ def run(
     if training:
         optimizer.zero_grad()
         this_epoch_eps = max(0.0, args.eps - (epoch * args.eps_anneal))
-        this_epoch_uniform_weight = max(0.0, args.uniform_weight - (epoch * args.uniform_weight_anneal))
-        this_epoch_softmax_temp = max(1.0, args.softmax_temp - (epoch * args.softmax_temp_anneal))
+        this_epoch_uniform_weight = max(
+            0.0, args.uniform_weight - (epoch * args.uniform_weight_anneal)
+        )
+        this_epoch_softmax_temp = max(
+            1.0, args.softmax_temp - (epoch * args.softmax_temp_anneal)
+        )
     else:
         this_epoch_eps = 0.0
         this_epoch_uniform_weight = 0.0
@@ -262,7 +283,7 @@ def run(
         batch_size = spk_inp.shape[0]
 
         # Determine what's input
-        if dataloader.dataset.name == 'shapeworld':
+        if dataloader.dataset.name == "shapeworld":
             spk_inp = spk_inp.float() / 255
             lis_inp = lis_inp.float() / 255
         else:
@@ -318,10 +339,10 @@ def run(
             lang_text_unjoined = util.to_emergent_text(lang_i)
             lang_text = [" ".join(toks) for toks in lang_text_unjoined]
         else:
-            lang_text_unjoined = [['N/A'] for _ in range(batch_size)]
-            lang_text = ['N/A' for _ in range(batch_size)]
+            lang_text_unjoined = [["N/A"] for _ in range(batch_size)]
+            lang_text = ["N/A" for _ in range(batch_size)]
         true_lang_text = get_true_lang(batch, dataloader.dataset, args, join=False)
-        true_lang_text_joined = [' '.join(t) for t in true_lang_text]
+        true_lang_text_joined = [" ".join(t) for t in true_lang_text]
 
         # Game difficulty/other metadata indicator
         all_lang.extend(zip(lang_text, true_lang_text, per_game_acc, md.numpy()))
@@ -359,7 +380,9 @@ def run(
             if batch_i % args.log_interval == 0:
                 log_epoch_progress(epoch, batch_i, batch_size, dataloader, stats)
 
-        stats.update(loss=this_loss, acc=this_acc, batch_size=batch_size, combined_loss=comb_loss)
+        stats.update(
+            loss=this_loss, acc=this_acc, batch_size=batch_size, combined_loss=comb_loss
+        )
 
     if training and not backpropped:
         torch.nn.utils.clip_grad_norm_(pair.parameters(), args.clip)
@@ -369,13 +392,14 @@ def run(
     # Compute metrics + collect generation language
     metrics = stats.averages()
     all_lang = pd.DataFrame.from_records(
-        all_lang, columns=['lang', 'true_lang', 'acc', 'md'],
+        all_lang,
+        columns=["lang", "true_lang", "acc", "md"],
     )
 
     if args.use_lang:
         # Compute emergent communication statistics
         # TODO - this should generally be a "meaning preprocess" function
-        if dataloader.dataset.name == 'cub':
+        if dataloader.dataset.name == "cub":
             attrs_numeric = dataloader.dataset.attr_to_numeric(all_attrs)
         else:
             attrs_numeric = None
@@ -393,8 +417,7 @@ def run(
 
     if dataloader.dataset.name == "shapeworld":
         by_md_metrics = compute_metrics_by_md(
-            all_lang,
-            md_vocab=dataloader.dataset.metadata_vocab
+            all_lang, md_vocab=dataloader.dataset.metadata_vocab
         )
         metrics.update(by_md_metrics)
 
@@ -446,18 +469,16 @@ if __name__ == "__main__":
     model_config = models.builder.build_models(dataloaders, args)
     this_game_type = data.util.get_game_type(args)
 
-    run_args = (
-        model_config['pair'],
-        model_config['optimizer'],
-        dataloaders,
-        args
-    )
+    run_args = (model_config["pair"], model_config["optimizer"], dataloaders, args)
 
     all_metrics = []
     metrics = init_metrics()
     for epoch in range(args.epochs):
         # No reset on epoch 0, but reset after epoch 2, epoch 4, etc
-        if args.listener_reset_interval > 0 and (epoch % args.listener_reset_interval) == 0:
+        if (
+            args.listener_reset_interval > 0
+            and (epoch % args.listener_reset_interval) == 0
+        ):
             logging.info(f"Resetting listener at epoch {epoch}")
             model_config["pair"].listener.reset_parameters()
 
@@ -481,7 +502,9 @@ if __name__ == "__main__":
                         util.update_with_prefix(metrics, eval_metrics, sname)
                         if this_game_type == game_type:
                             # Default
-                            util.update_with_prefix(metrics, eval_metrics, f"{split}{split_type}")
+                            util.update_with_prefix(
+                                metrics, eval_metrics, f"{split}{split_type}"
+                            )
 
                         for metric, value in eval_metrics.items():
                             split_metrics[metric].append(value)
@@ -492,7 +515,9 @@ if __name__ == "__main__":
 
                 # Average across seen and novel
                 split_metrics = {k: np.mean(v) for k, v in split_metrics.items()}
-                util.update_with_prefix(metrics, split_metrics, f"{split}_avg_{game_type}")
+                util.update_with_prefix(
+                    metrics, split_metrics, f"{split}_avg_{game_type}"
+                )
                 if this_game_type == game_type:
                     # Default
                     util.update_with_prefix(metrics, split_metrics, f"{split}_avg")
@@ -509,23 +534,26 @@ if __name__ == "__main__":
                 lang.to_csv(os.path.join(exp_dir, "best_lang.csv"), index=False)
             # Save the model
             model_fname = os.path.join(exp_dir, "best_model.pt")
-            torch.save(model_config['pair'].state_dict(), model_fname)
+            torch.save(model_config["pair"].state_dict(), model_fname)
 
         if epoch % args.save_interval == 0:
             model_fname = os.path.join(exp_dir, f"{epoch}_model.pt")
-            torch.save(model_config['pair'].state_dict(), model_fname)
+            torch.save(model_config["pair"].state_dict(), model_fname)
             if args.use_lang:
                 lang.to_csv(os.path.join(exp_dir, f"{epoch}_lang.csv"), index=False)
 
         # Additionally track best for splits separately
         metrics["best_val_acc"] = max(metrics["best_val_acc"], metrics["val_acc"])
         if "val_same_acc" in metrics:
-            metrics["best_val_same_acc"] = max(metrics["best_val_same_acc"], metrics["val_same_acc"])
+            metrics["best_val_same_acc"] = max(
+                metrics["best_val_same_acc"], metrics["val_same_acc"]
+            )
 
         all_metrics.append(metrics.copy())
 
         if args.wandb:
             import wandb
+
             wandb.log(metrics)
 
         pd.DataFrame(all_metrics).to_csv(

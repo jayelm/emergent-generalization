@@ -17,7 +17,7 @@ def stack_pos_neg(pos_imgs, neg_imgs):
 
     imgs = torch.cat([pos_imgs, neg_imgs], 0)
     y = torch.zeros(imgs.shape[0], dtype=torch.uint8)
-    y[:pos_imgs.shape[0]] = 1
+    y[: pos_imgs.shape[0]] = 1
     return imgs, y
 
 
@@ -27,14 +27,14 @@ def split_spk_lis(inp, y, n_examples, percent_novel=1.0):
 
     spk_inp = torch.zeros((n_examples, *inp.shape[1:]), dtype=inp.dtype)
     spk_inp[:n_pos_ex] = inp[:n_pos_ex]
-    spk_inp[n_pos_ex:] = inp[midp:midp + n_pos_ex]
+    spk_inp[n_pos_ex:] = inp[midp : midp + n_pos_ex]
 
     spk_label = torch.zeros(n_examples, dtype=torch.uint8)
     spk_label[:n_pos_ex] = 1
 
     lis_inp = torch.zeros((n_examples, *inp.shape[1:]), dtype=inp.dtype)
-    lis_inp[:n_pos_ex] = inp[n_pos_ex:2 * n_pos_ex]
-    lis_inp[n_pos_ex:] = inp[midp + n_pos_ex:midp + (2 * n_pos_ex)]
+    lis_inp[:n_pos_ex] = inp[n_pos_ex : 2 * n_pos_ex]
+    lis_inp[n_pos_ex:] = inp[midp + n_pos_ex : midp + (2 * n_pos_ex)]
 
     lis_label = torch.zeros(n_examples, dtype=torch.uint8)
     lis_label[:n_pos_ex] = 1
@@ -114,6 +114,7 @@ def return_index(getitem):
     def with_index(self, index):
         res = getitem(self, index)
         return res + (index,)
+
     return with_index
 
 

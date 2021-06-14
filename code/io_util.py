@@ -14,13 +14,18 @@ def parse_args(defaults=False):
     )
 
     parser.add_argument("--dataset", default="data/shapeworld/", type=str)
-    parser.add_argument("--test_dataset", default=None, type=str, help="Test dataset (if different) - will use test split")
+    parser.add_argument(
+        "--test_dataset",
+        default=None,
+        type=str,
+        help="Test dataset (if different) - will use test split",
+    )
     parser.add_argument(
         "--backbone",
         default=None,
         choices=list(BACKBONES.keys()),
         type=str,
-        help="Vision backbone. If None, uses default in models.builder"
+        help="Vision backbone. If None, uses default in models.builder",
     )
     parser.add_argument(
         "--vocab_size",
@@ -32,7 +37,7 @@ def parse_args(defaults=False):
         "--max_lang_length",
         default=4,
         type=int,
-        help="Maximum language length, including SOS and EOS"
+        help="Maximum language length, including SOS and EOS",
     )
 
     parser.add_argument(
@@ -45,7 +50,9 @@ def parse_args(defaults=False):
     )
     arch_group = arch_group_.add_mutually_exclusive_group()
     arch_group.add_argument(
-        "--listener_only", action="store_true", help="Don't use teacher",
+        "--listener_only",
+        action="store_true",
+        help="Don't use teacher",
     )
     arch_group.add_argument(
         "--share_feat_model",
@@ -62,13 +69,13 @@ def parse_args(defaults=False):
         "--n_transformer_heads",
         type=int,
         default=8,
-        help="How many heads for multihead attention if --prototype transformer"
+        help="How many heads for multihead attention if --prototype transformer",
     )
     parser.add_argument(
         "--n_transformer_layers",
         type=int,
         default=2,
-        help="How many transformer encoder layters if --prototype transformer"
+        help="How many transformer encoder layters if --prototype transformer",
     )
     parser.add_argument(
         "--joint_training",
@@ -100,7 +107,7 @@ def parse_args(defaults=False):
         "--n_examples",
         default=None,
         type=int,
-        help="# examples seen per agent (if none, automatically divide all images available); should be divisible by 2"
+        help="# examples seen per agent (if none, automatically divide all images available); should be divisible by 2",
     )
     parser.add_argument(
         "--test_n_examples",
@@ -109,31 +116,45 @@ def parse_args(defaults=False):
     )
     parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument(
-        "--accum_steps", default=1, type=int,
+        "--accum_steps",
+        default=1,
+        type=int,
         help="How often (in batches) to backprop - > 1 implies gradient accumulation",
     )
     parser.add_argument(
-        "--eps", type=float, default=0.0,
+        "--eps",
+        type=float,
+        default=0.0,
         help="epsilon parameter for epsilon greedy search",
     )
     parser.add_argument(
-        "--eps_anneal", type=float, default=0.0,
+        "--eps_anneal",
+        type=float,
+        default=0.0,
         help="Reduce --eps by this amount per epoch",
     )
     parser.add_argument(
-        "--softmax_temp", type=float, default=1.0,
+        "--softmax_temp",
+        type=float,
+        default=1.0,
         help="softmax temp parameter for sampling (different from gumbel-softmax tau; note only works if > 1)",
     )
     parser.add_argument(
-        "--softmax_temp_anneal", type=float, default=0.0,
+        "--softmax_temp_anneal",
+        type=float,
+        default=0.0,
         help="Reduce --softmax_temp by this amount per epoch",
     )
     parser.add_argument(
-        "--uniform_weight", type=float, default=0.0,
+        "--uniform_weight",
+        type=float,
+        default=0.0,
         help="mix speaker outputs with this much of a uniform distribution",
     )
     parser.add_argument(
-        "--uniform_weight_anneal", type=float, default=0.0,
+        "--uniform_weight_anneal",
+        type=float,
+        default=0.0,
         help="Reduce --uniform_weight by this amount per epoch",
     )
     parser.add_argument(
@@ -168,7 +189,7 @@ def parse_args(defaults=False):
         "--listener_reset_interval",
         default=0,
         type=int,
-        help="How often in epochs to reset listener (if 0, no reset)"
+        help="How often in epochs to reset listener (if 0, no reset)",
     )
     parser.add_argument("--clip", default=100.0, type=float, help="Gradient clipping")
     parser.add_argument("--embedding_size", default=500, type=int)
@@ -179,17 +200,28 @@ def parse_args(defaults=False):
     parser.add_argument("--epochs", default=100, type=int)
     parser.add_argument("--tau", default=1.0, type=float, help="Gumbel-softmax tau")
     parser.add_argument("--log_interval", default=100, type=int)
-    parser.add_argument("--save_interval", default=10, type=int, help="How often (in epochs) to save lang + model")
+    parser.add_argument(
+        "--save_interval",
+        default=10,
+        type=int,
+        help="How often (in epochs) to save lang + model",
+    )
     parser.add_argument("--lr", default=1e-4, type=float)
     parser.add_argument("--transformer_lr", default=None, type=float)
     parser.add_argument("--cuda", action="store_true")
     parser.add_argument("--wandb", action="store_true", help="log with wandb")
-    parser.add_argument("--wandb_project_name", default='cc', help='wandb project name')
+    parser.add_argument("--wandb_project_name", default="cc", help="wandb project name")
     parser.add_argument("--n_workers", default=0, type=int)
     parser.add_argument("--name", default=None)
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--vis", action="store_true", help="Visualize last batch of each epoch")
-    parser.add_argument("--load_shapeworld_into_memory", action="store_true", help="Load shapeworld hdf5 into memory (can be high memory reqs)")
+    parser.add_argument(
+        "--vis", action="store_true", help="Visualize last batch of each epoch"
+    )
+    parser.add_argument(
+        "--load_shapeworld_into_memory",
+        action="store_true",
+        help="Load shapeworld hdf5 into memory (can be high memory reqs)",
+    )
 
     if defaults:
         args = parser.parse_args([])
@@ -199,7 +231,9 @@ def parse_args(defaults=False):
     args.use_lang = not args.copy_listener and not args.listener_only
 
     if args.copy_listener and args.listener_only:
-        parser.error("argument --copy_listener: not allowed with argument --listener_only")
+        parser.error(
+            "argument --copy_listener: not allowed with argument --listener_only"
+        )
 
     if args.reference_game_xent and not args.reference_game:
         parser.error("--reference_game_xent requires --reference_game")
@@ -211,6 +245,7 @@ def parse_args(defaults=False):
 
     if args.wandb:
         import wandb
+
         wandb.init(args.wandb_project_name, config=args)
         if args.name is not None:
             wandb.run.name = args.name

@@ -37,7 +37,9 @@ def sample(pair, dataloaders, exp_args, args):
         all_lang = pd.DataFrame()
         pbar = tqdm(desc=f"sample {split}", total=n)
         while all_lang.shape[0] < n:
-            split_stats, lang = run(split, 0, pair, None, dataloaders, exp_args, force_no_train=True)
+            split_stats, lang = run(
+                split, 0, pair, None, dataloaders, exp_args, force_no_train=True
+            )
             if dname == "cub":  # Zero out metadata
                 lang["md"] = 0
             all_lang = pd.concat((all_lang, lang))
@@ -80,20 +82,20 @@ def sample(pair, dataloaders, exp_args, args):
         json.dump(comb_stats, f)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, Namespace
 
     parser = ArgumentParser(
-        description=__doc__,
-        formatter_class=ArgumentDefaultsHelpFormatter)
+        description=__doc__, formatter_class=ArgumentDefaultsHelpFormatter
+    )
 
-    parser.add_argument('exp_dir')
-    parser.add_argument('--n', default=200000, type=int, help="Number of samples")
+    parser.add_argument("exp_dir")
+    parser.add_argument("--n", default=200000, type=int, help="Number of samples")
 
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('--force_reference_game', action="store_true")
-    group.add_argument('--force_concept_game', action="store_true")
-    group.add_argument('--force_setref_game', action="store_true")
+    group.add_argument("--force_reference_game", action="store_true")
+    group.add_argument("--force_concept_game", action="store_true")
+    group.add_argument("--force_setref_game", action="store_true")
 
     args = parser.parse_args()
 
@@ -104,12 +106,19 @@ if __name__ == '__main__':
     if args.force_reference_game:
         exp_args.reference_game = True
         exp_args.percent_novel = 0.0
-        if "shapeworld" in exp_args.dataset and "shapeworld_ref" not in exp_args.dataset:
+        if (
+            "shapeworld" in exp_args.dataset
+            and "shapeworld_ref" not in exp_args.dataset
+        ):
             # Change SW dataset to ref version (no change for CUB)
             if "shapeworld_all" in exp_args.dataset:
-                exp_args.dataset = exp_args.dataset.replace("shapeworld_all", "shapeworld_ref")
+                exp_args.dataset = exp_args.dataset.replace(
+                    "shapeworld_all", "shapeworld_ref"
+                )
             else:
-                exp_args.dataset = exp_args.dataset.replace("shapeworld", "shapeworld_ref")
+                exp_args.dataset = exp_args.dataset.replace(
+                    "shapeworld", "shapeworld_ref"
+                )
     elif args.force_concept_game:
         exp_args.reference_game = False
         exp_args.percent_novel = 1.0

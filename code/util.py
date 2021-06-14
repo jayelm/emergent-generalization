@@ -66,7 +66,9 @@ class Statistics:
             Average value of each metric
         """
         metrics = {m: vs.avg for m, vs in self.meters.items()}
-        metrics = {m: v if isinstance(v, float) else v.item() for m, v in metrics.items()}
+        metrics = {
+            m: v if isinstance(v, float) else v.item() for m, v in metrics.items()
+        }
         return metrics
 
     def __str__(self):
@@ -200,9 +202,7 @@ def dtext(x, dataset):
 
 
 def update_with_prefix(d, new_d, prefix):
-    d.update({
-        f"{prefix}_{k}": v for k, v in new_d.items()
-    })
+    d.update({f"{prefix}_{k}": v for k, v in new_d.items()})
 
 
 def to_emergent_text(idxs, join=False, eos=None):
@@ -228,6 +228,7 @@ class FastTensorDataLoader:
     TensorDataset + DataLoader because dataloader grabs individual indices of
     the dataset and calls cat (slow).
     """
+
     def __init__(self, *tensors, batch_size=32, shuffle=False):
         """
         Initialize a FastTensorDataLoader.
@@ -264,10 +265,10 @@ class FastTensorDataLoader:
         if self.i >= self.dataset_len:
             raise StopIteration
         if self.indices is not None:
-            indices = self.indices[self.i:self.i+self.batch_size]
+            indices = self.indices[self.i : self.i + self.batch_size]
             batch = tuple(torch.index_select(t, 0, indices) for t in self.tensors)
         else:
-            batch = tuple(t[self.i:self.i+self.batch_size] for t in self.tensors)
+            batch = tuple(t[self.i : self.i + self.batch_size] for t in self.tensors)
         self.i += self.batch_size
         return batch
 

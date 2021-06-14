@@ -72,19 +72,19 @@ def load_run(run, fname):
     # Check for sampled lang stats
     sampled_lang_stats_fname = os.path.join(run, fname)
     if os.path.exists(sampled_lang_stats_fname):
-        with open(sampled_lang_stats_fname, 'r') as f:
+        with open(sampled_lang_stats_fname, "r") as f:
             return json.load(f)
 
     print(f"Can't find {sampled_lang_stats_fname}")
     return {}
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
     parser = ArgumentParser(
-        description=__doc__,
-        formatter_class=ArgumentDefaultsHelpFormatter)
+        description=__doc__, formatter_class=ArgumentDefaultsHelpFormatter
+    )
 
     args = parser.parse_args()
 
@@ -95,8 +95,12 @@ if __name__ == '__main__':
 
     # Standard results - ref vs concept vs setref, standard eval
     for json_name, out_name in fnames:
-        swc = load_all(SW["concept"], dataset="shapeworld", name="concept", fname=json_name)
-        swsr = load_all(SW["setref"], dataset="shapeworld", name="setref", fname=json_name)
+        swc = load_all(
+            SW["concept"], dataset="shapeworld", name="concept", fname=json_name
+        )
+        swsr = load_all(
+            SW["setref"], dataset="shapeworld", name="setref", fname=json_name
+        )
         swr = load_all(SW["ref"], dataset="shapeworld_ref", name="ref", fname=json_name)
 
         sw = swc + swsr + swr
@@ -108,4 +112,6 @@ if __name__ == '__main__':
         c = cc + csr + cr
 
         alls = sw + c
-        pd.DataFrame.from_records(alls).to_csv(os.path.join("etc", out_name), index=False)
+        pd.DataFrame.from_records(alls).to_csv(
+            os.path.join("etc", out_name), index=False
+        )

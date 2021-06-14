@@ -537,6 +537,7 @@ def reset_parameters(model):
             or isinstance(m, nn.GroupNorm)
         ):
             m.reset_parameters()
+
     model.apply(weight_reset)
 
 

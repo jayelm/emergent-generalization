@@ -14,7 +14,14 @@ import data.language
 
 
 class CopySpeaker(nn.Module):
-    def __init__(self, feat_model, dropout=0.5, prototype="average", n_transformer_heads=8, n_transformer_layers=2):
+    def __init__(
+        self,
+        feat_model,
+        dropout=0.5,
+        prototype="average",
+        n_transformer_heads=8,
+        n_transformer_layers=2,
+    ):
         super().__init__()
         self.feat_model = feat_model
         self.feat_size = feat_model.final_feat_dim
@@ -77,10 +84,7 @@ class CopySpeaker(nn.Module):
         # Here we depend that the first inputs are always positive targets, and
         # last inputs are always negative
         midp = targets.shape[1] // 2
-        if not (
-            (targets[:, :midp] == 1.0).all() and
-            (targets[:, midp:] == 0.0).all()
-        ):
+        if not ((targets[:, :midp] == 1.0).all() and (targets[:, midp:] == 0.0).all()):
             raise NotImplementedError("Implement generic masking")
 
         pos_emb = self.add_cls_token(feats_emb[:, :midp])
@@ -151,9 +155,16 @@ class Speaker(CopySpeaker):
         self.init_h = nn.Linear(2 * self.feat_size, self.hidden_size)
         self.bilinear = nn.Linear(self.hidden_size, self.feat_size, bias=False)
 
-    def sample(self, states, greedy=False, max_len=4, eps=0.0, softmax_temp=1.0, uniform_weight=0.0):
-        """
-        """
+    def sample(
+        self,
+        states,
+        greedy=False,
+        max_len=4,
+        eps=0.0,
+        softmax_temp=1.0,
+        uniform_weight=0.0,
+    ):
+        """ """
         batch_size = states.shape[1]  # 0th dim is singleton for GRU
         # This contains are series of sampled onehot vectors
         lang = []
@@ -196,12 +207,17 @@ class Speaker(CopySpeaker):
                 outputs = torch.log_softmax(outputs, -1)
 
                 if uniform_weight != 0.0:
-                    uniform_outputs = torch.full_like(outputs, np.log(1 / outputs.shape[1]))
+                    uniform_outputs = torch.full_like(
+                        outputs, np.log(1 / outputs.shape[1])
+                    )
                     # Weighted average of logits and uniform distribution in log space
-                    combined_outputs = torch.stack([
-                        uniform_outputs + np.log(uniform_weight),
-                        outputs + np.log(1 - uniform_weight),
-                    ], 2)
+                    combined_outputs = torch.stack(
+                        [
+                            uniform_outputs + np.log(uniform_weight),
+                            outputs + np.log(1 - uniform_weight),
+                        ],
+                        2,
+                    )
                     outputs = torch.logsumexp(combined_outputs, 2)
 
                 if softmax_temp != 1.0:
@@ -211,9 +227,15 @@ class Speaker(CopySpeaker):
 
                 # Epsilon - random sample (not sure if this works)
                 if np.random.random() < eps:
-                    random_i = torch.randint(outputs.shape[1], (outputs.shape[0], 1)).to(predicted_onehot.device)
-                    random_onehot = torch.zeros_like(predicted_onehot).scatter_(-1, random_i, 1.0)
-                    predicted_onehot = (random_onehot - predicted_onehot.detach()) + predicted_onehot
+                    random_i = torch.randint(
+                        outputs.shape[1], (outputs.shape[0], 1)
+                    ).to(predicted_onehot.device)
+                    random_onehot = torch.zeros_like(predicted_onehot).scatter_(
+                        -1, random_i, 1.0
+                    )
+                    predicted_onehot = (
+                        random_onehot - predicted_onehot.detach()
+                    ) + predicted_onehot
 
                 # Add to lang
                 lang.append(predicted_onehot.unsqueeze(1))

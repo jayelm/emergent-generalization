@@ -26,7 +26,10 @@ class Encoder(nn.Module):
         emb = self.embedding(caps)
 
         packed_input = pack_padded_sequence(
-            emb, caplens.cpu(), enforce_sorted=False, batch_first=True,
+            emb,
+            caplens.cpu(),
+            enforce_sorted=False,
+            batch_first=True,
         )
         _, hidden = self.rnn(packed_input)
         return hidden[-1]
@@ -40,6 +43,7 @@ class Decoder(nn.Module):
     """
     Decoder.
     """
+
     def __init__(self, vocab_size, encoder_dim, embed_dim, decoder_dim, dropout=0.0):
         """
         :param embed_dim: embedding size
@@ -116,7 +120,12 @@ class Decoder(nn.Module):
         return predictions, targets
 
     def sample(
-        self, encoder_out, greedy=False, max_length=50, trim=True, return_all_scores=False
+        self,
+        encoder_out,
+        greedy=False,
+        max_length=50,
+        trim=True,
+        return_all_scores=False,
     ):
         """
         Sample from the decoder.

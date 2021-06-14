@@ -25,17 +25,15 @@ DEFAULT_MODELS = {
 
 
 def is_transformer_param(name):
-    return (
-        name.startswith("speaker.transformer") or
-        name.startswith("speaker.cls_emb")
-    )
+    return name.startswith("speaker.transformer") or name.startswith("speaker.cls_emb")
 
 
 def build_models(dataloaders, args):
     n_feats = dataloaders["train"].dataset.n_feats
     if len(n_feats) == 1:  # Feature based; use mlp
+
         def feat_fn(which):
-            if which == 'speaker':
+            if which == "speaker":
                 output_size = args.speaker_hidden_size
                 n_layers = args.speaker_n_layers
             else:
@@ -46,7 +44,9 @@ def build_models(dataloaders, args):
                 output_size=output_size,
                 n_layers=n_layers,
             )
+
     else:
+
         def feat_fn(which):
             # To use comm, make this conv4.
             if args.pretrained_feat_model:
@@ -61,13 +61,13 @@ def build_models(dataloaders, args):
     if args.listener_only:
         speaker_feat_model = None
     else:
-        speaker_feat_model = feat_fn('speaker')
+        speaker_feat_model = feat_fn("speaker")
 
     if args.share_feat_model:
         assert speaker_feat_model is not None
         listener_feat_model = speaker_feat_model
     else:
-        listener_feat_model = feat_fn('listener')
+        listener_feat_model = feat_fn("listener")
 
     if args.listener_only or args.copy_listener:
         # Copy entire teacher internal state
@@ -116,23 +116,37 @@ def build_models(dataloaders, args):
     # Optimization
     opt_params = [
         {
-            "params": [p for name, p in pair.named_parameters() if not is_transformer_param(name)],
+            "params": [
+                p
+                for name, p in pair.named_parameters()
+                if not is_transformer_param(name)
+            ],
             "lr": args.lr,
         }
     ]
     if args.prototype == "transformer":
-        opt_params.append({
-            "params": [p for name, p in pair.named_parameters() if is_transformer_param(name)],
-            "lr": args.transformer_lr if args.transformer_lr is not None else args.lr,
-        })
+        opt_params.append(
+            {
+                "params": [
+                    p
+                    for name, p in pair.named_parameters()
+                    if is_transformer_param(name)
+                ],
+                "lr": args.transformer_lr
+                if args.transformer_lr is not None
+                else args.lr,
+            }
+        )
 
     optimizer = optim.Adam(opt_params, lr=args.lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, factor=0.5, patience=10,
+        optimizer,
+        factor=0.5,
+        patience=10,
     )
 
     return {
-        'pair': pair,
-        'optimizer': optimizer,
-        'scheduler': scheduler,
+        "pair": pair,
+        "optimizer": optimizer,
+        "scheduler": scheduler,
     }

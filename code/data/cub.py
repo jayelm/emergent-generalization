@@ -25,18 +25,23 @@ TEST_CLASSES_DEBUG = range(8, 12)
 
 
 def load_attr_dict(cub_path):
-    fpath = os.path.join(cub_path, 'attributes.txt')
-    attr_df = pd.read_csv(fpath, header=None, sep=' ', names=['attr_id', 'attr_name'],
-                          usecols=['attr_name'])
+    fpath = os.path.join(cub_path, "attributes.txt")
+    attr_df = pd.read_csv(
+        fpath,
+        header=None,
+        sep=" ",
+        names=["attr_id", "attr_name"],
+        usecols=["attr_name"],
+    )
     # attr_id is 1-indexed but we want 0 index
-    attrs = attr_df['attr_name']
+    attrs = attr_df["attr_name"]
 
     attr_type_dict = {}
     attr_type_val_count_dict = Counter()
     attr_val_dict = {}
 
     for attr_i, attr in enumerate(attrs):
-        attr_type, attr_val = attr.split('::')
+        attr_type, attr_val = attr.split("::")
 
         if attr_type not in attr_type_dict:
             attr_type_dict[attr_type] = len(attr_type_dict)
@@ -54,17 +59,19 @@ def load_attr_dict(cub_path):
 
 
 def load_class_metadata(cub_path):
-    md_path = os.path.join(cub_path, 'attributes', 'class_attribute_labels_continuous.txt')
-    md = pd.read_csv(md_path, sep=' ', header=None).to_numpy(dtype=np.float32)
+    md_path = os.path.join(
+        cub_path, "attributes", "class_attribute_labels_continuous.txt"
+    )
+    md = pd.read_csv(md_path, sep=" ", header=None).to_numpy(dtype=np.float32)
     md = (md > 50.0).astype(np.uint8)
     # Now map to unique class names which are +1 indexed
     md_dict = {}
     for i in range(md.shape[0]):
         md_dict[i + 1] = md[i]
     # Now map from image ids to unique class names
-    im_path = os.path.join(cub_path, 'image_class_labels.txt')
-    im2cl = pd.read_csv(im_path, sep=' ', header=None, names=['image_id', 'class_id'])
-    im2cl = dict(zip(im2cl['image_id'], im2cl['class_id']))
+    im_path = os.path.join(cub_path, "image_class_labels.txt")
+    im2cl = pd.read_csv(im_path, sep=" ", header=None, names=["image_id", "class_id"])
+    im2cl = dict(zip(im2cl["image_id"], im2cl["class_id"]))
 
     im_dict = {}
     for im_id, cl_id in im2cl.items():
@@ -76,16 +83,21 @@ def load_img_metadata(cub_path):
     """
     TODO - do we do per class here?
     """
-    md_path = os.path.join(cub_path, 'attributes', 'image_attribute_labels.txt')
-    md = pd.read_csv(md_path, sep=' ', names=['image_id', 'attribute_id', 'is_present', 'certainty_id', 'time'],
-                     usecols=['is_present'], dtype={'is_present': np.uint8},
-                     header=None)
-    md_arr = md['is_present'].to_numpy()
+    md_path = os.path.join(cub_path, "attributes", "image_attribute_labels.txt")
+    md = pd.read_csv(
+        md_path,
+        sep=" ",
+        names=["image_id", "attribute_id", "is_present", "certainty_id", "time"],
+        usecols=["is_present"],
+        dtype={"is_present": np.uint8},
+        header=None,
+    )
+    md_arr = md["is_present"].to_numpy()
     # Take slices by # of attributes, which is by 312
     md_dict = {}
     i = 1  # img id
     for start in range(0, len(md_arr), 312):
-        md_dict[i] = md_arr[start:start + 312]
+        md_dict[i] = md_arr[start : start + 312]
         i += 1
 
     # Now this is a mapping from each image id to the array
@@ -93,24 +105,28 @@ def load_img_metadata(cub_path):
 
 
 def load_cub_metadata(args):
-    cub_dir = os.path.join(args.dataset, 'CUB_200_2011')
+    cub_dir = os.path.join(args.dataset, "CUB_200_2011")
 
     # Load metadata per image
     img_md = load_img_metadata(cub_dir)
     class_md = load_class_metadata(cub_dir)
 
     # Load mapping from image names (npz keys) to metadata
-    id2name = pd.read_csv(os.path.join(cub_dir, 'images.txt'), sep=' ',
-                          names=['image_id', 'name'],
-                          header=None)
-    id2name = dict(zip(id2name['image_id'], id2name['name']))
+    id2name = pd.read_csv(
+        os.path.join(cub_dir, "images.txt"),
+        sep=" ",
+        names=["image_id", "name"],
+        header=None,
+    )
+    id2name = dict(zip(id2name["image_id"], id2name["name"]))
 
     def rename_md(md):
         # Rename to image names
         md = {id2name[i]: m for i, m in md.items()}
         # Add path to cub dir so we can look up md in CUBDataset
-        md = {os.path.join('cub', 'CUB_200_2011', 'images', k): v
-              for k, v in md.items()}
+        md = {
+            os.path.join("cub", "CUB_200_2011", "images", k): v for k, v in md.items()
+        }
         return md
 
     img_md = rename_md(img_md)
@@ -120,20 +136,23 @@ def load_cub_metadata(args):
 
 
 def load(args):
-    img_dir = os.path.join(args.dataset, 'CUB_200_2011', 'images')
+    img_dir = os.path.join(args.dataset, "CUB_200_2011", "images")
     classes = os.listdir(img_dir)
     imgs = {}
     print("Loading CUB...")
     for cl in classes:
-        cl_n = int(cl.split('.')[0])
+        cl_n = int(cl.split(".")[0])
         if args.debug:
             if not any(
-                cl_n in r for r in [TRAIN_CLASSES_DEBUG, VAL_CLASSES_DEBUG, TEST_CLASSES_DEBUG]
+                cl_n in r
+                for r in [TRAIN_CLASSES_DEBUG, VAL_CLASSES_DEBUG, TEST_CLASSES_DEBUG]
             ):
                 continue
-        npz_dir = os.path.join(img_dir, cl, 'img.npz')
+        npz_dir = os.path.join(img_dir, cl, "img.npz")
         if not os.path.exists(npz_dir):
-            raise RuntimeError(f"Couldn't find {npz_dir}, run save_cub_np.py in data/ first?")
+            raise RuntimeError(
+                f"Couldn't find {npz_dir}, run save_cub_np.py in data/ first?"
+            )
         cl_imgs = np.load(npz_dir)
         if LOAD_INTO_MEMORY:  # Load npz into memory
             cl_imgs = dict(cl_imgs)
@@ -151,10 +170,14 @@ def load(args):
 
     tloader = iu.TransformLoader(IMAGE_SIZE)
     train_transform = tloader.get_composed_transform(
-        aug=True, normalize=True, to_pil=True,
+        aug=True,
+        normalize=True,
+        to_pil=True,
     )
     test_transform = tloader.get_composed_transform(
-        aug=False, normalize=True, to_pil=True,
+        aug=False,
+        normalize=True,
+        to_pil=True,
     )
 
     def to_dset(classes, train=False, percent_novel=None, reference_game=None):
@@ -200,9 +223,9 @@ def load(args):
         }
 
     datasets = {
-        'train': to_dset(classes["train"], train=True),
-        'val': to_dset(classes["val"], train=False),
-        'test': to_dset(classes["test"], train=False),
+        "train": to_dset(classes["train"], train=True),
+        "val": to_dset(classes["val"], train=False),
+        "test": to_dset(classes["test"], train=False),
     }
 
     # Load other splits
@@ -217,7 +240,7 @@ def load(args):
                     classes[_split],
                     percent_novel=1.0 if game_type == "concept" else 0.0,
                     reference_game=game_type == "ref",
-                    train=False
+                    train=False,
                 )
 
     return datasets
@@ -225,10 +248,21 @@ def load(args):
 
 class CUBDataset:
     MAX_N_EXAMPLES = 20
-    name = 'cub'
-    meaning_distance_fn = 'hamming'
+    name = "cub"
+    meaning_distance_fn = "hamming"
 
-    def __init__(self, imgs, metadata, img_metadata, attr_dict, n_examples=None, transform=None, length=1000, reference_game=False, percent_novel=1.0):
+    def __init__(
+        self,
+        imgs,
+        metadata,
+        img_metadata,
+        attr_dict,
+        n_examples=None,
+        transform=None,
+        length=1000,
+        reference_game=False,
+        percent_novel=1.0,
+    ):
         self.imgs = imgs
         self.metadata = metadata
         self.img_metadata = img_metadata  # For hausdorff
@@ -288,7 +322,9 @@ class CUBDataset:
             md = self.metadata[pos_name]
             percent_novel = 0.0
         else:
-            pos_names = np.random.choice(self.img_names[cl], size=self.n_examples, replace=False)
+            pos_names = np.random.choice(
+                self.img_names[cl], size=self.n_examples, replace=False
+            )
             pos_imgs = [self.imgs[cl][name] for name in pos_names]
             md = self.metadata[pos_names[0]]
             percent_novel = self.percent_novel
@@ -306,13 +342,15 @@ class CUBDataset:
 
         # 0th metadata is a game indicator, which we don't use
         md = torch.from_numpy(md)
-        diff = torch.zeros((1, ), dtype=md.dtype)
+        diff = torch.zeros((1,), dtype=md.dtype)
         md = torch.cat([diff, md], 0)
 
         # "padding"
         txt = np.full(3, cl, dtype=np.int64)
 
-        splits = util.split_spk_lis(imgs, y, self.n_examples, percent_novel=percent_novel)
+        splits = util.split_spk_lis(
+            imgs, y, self.n_examples, percent_novel=percent_novel
+        )
 
         return splits + (txt, md)
 
@@ -321,7 +359,7 @@ class CUBDataset:
 
     def vis_input(self, inp, overwrite=True, **kwargs):
         img_fname = f"{kwargs['name']}_{kwargs['epoch']}_{kwargs['split']}_{kwargs['game_i']}_{kwargs['i']}.jpg"
-        img_f = os.path.join(kwargs['exp_dir'], 'images', img_fname)
+        img_f = os.path.join(kwargs["exp_dir"], "images", img_fname)
         img_html = f"""<img src="{os.path.join('images', img_fname)}">"""
         if os.path.exists(img_f) and not overwrite:
             return img_html

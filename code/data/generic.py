@@ -10,7 +10,7 @@ from . import util
 
 def vis_image(inp, overwrite=True, **kwargs):
     img_fname = f"{kwargs['name']}_{kwargs['epoch']}_{kwargs['split']}_{kwargs['game_i']}_{kwargs['i']}.jpg"
-    img_f = os.path.join(kwargs['exp_dir'], 'images', img_fname)
+    img_f = os.path.join(kwargs["exp_dir"], "images", img_fname)
     img_html = f"""<img src="{os.path.join('images', img_fname)}">"""
     if os.path.exists(img_f) and not overwrite:
         return img_html
@@ -22,9 +22,20 @@ def vis_image(inp, overwrite=True, **kwargs):
 
 
 class ConceptDataset:
-    def __init__(self, data, vocab, n_examples=None, augment=False,
-                 reference_game=False, percent_novel=1.0,
-                 name=None, meaning_distance_fn='hamming', visfunc=vis_image, image_size=None, **kwargs):
+    def __init__(
+        self,
+        data,
+        vocab,
+        n_examples=None,
+        augment=False,
+        reference_game=False,
+        percent_novel=1.0,
+        name=None,
+        meaning_distance_fn="hamming",
+        visfunc=vis_image,
+        image_size=None,
+        **kwargs,
+    ):
         self.x = data["x"]
         self.n_feats = self.x[0].shape[1:]
         self.n_examples = n_examples
@@ -93,10 +104,7 @@ class ConceptDataset:
             img = F.interpolate(img, (self.image_size, self.image_size))
 
         splits = util.split_spk_lis(
-            img,
-            label,
-            self.n_examples,
-            percent_novel=self.percent_novel
+            img, label, self.n_examples, percent_novel=self.percent_novel
         )
         return splits + (lang, md)
 

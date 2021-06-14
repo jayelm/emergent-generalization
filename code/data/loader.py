@@ -26,8 +26,11 @@ def load_dataloaders(args, **kwargs):
 
     def to_dl(dset):
         return DataLoader(
-            dset, batch_size=args.batch_size, shuffle=True,
-            num_workers=args.n_workers, pin_memory=True,
+            dset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.n_workers,
+            pin_memory=True,
             worker_init_fn=worker_init,
         )
 
