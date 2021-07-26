@@ -1,5 +1,6 @@
 # Emergent Communication of Generalizations
 
+https://arxiv.org/abs/2106.02668
 Preprint - under review
 
 ## Setup
