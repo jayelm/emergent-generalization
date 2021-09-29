@@ -2,7 +2,7 @@
 
 https://arxiv.org/abs/2106.02668
 
-Preprint - under review
+NeurIPS 2021
 
 ## Setup
 
